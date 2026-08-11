@@ -24,6 +24,26 @@
   font-size:15px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* ---- botão de camadas (canto inferior esquerdo) + menu de fundo/histórico ---- */
+#camadasWrap{position:absolute;left:12px;bottom:14px;z-index:1200}
+#camadasBtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+#camadasBtn:hover{background:var(--panel-2);color:var(--accent)}
+#camadasMenu{display:none;position:absolute;left:0;bottom:54px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.5);padding:8px;min-width:230px;max-height:70vh;overflow-y:auto}
+#camadasMenu.aberto{display:block}
+.cm-tit{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:6px 8px 4px}
+.cm-op{display:flex;align-items:center;gap:9px;padding:8px;border-radius:7px;cursor:pointer;font-size:13.5px;color:var(--text)}
+.cm-op:hover{background:var(--panel-2)}
+.cm-op input{width:16px;height:16px;accent-color:var(--accent);margin:0}
+.cm-hint{font-size:11px;color:var(--muted);padding:2px 8px 6px}
+#histBox{padding:2px 8px 6px}
+#histRange{width:100%;accent-color:var(--accent);margin:4px 0}
+#histLabel{font-size:13px;font-weight:700;color:var(--accent);text-align:center;font-family:var(--mono,monospace);padding:2px 0 6px}
+.cm-btn{width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:7px;
+  padding:7px;font-size:12px;cursor:pointer}
+.cm-btn:hover{border-color:var(--accent);color:var(--accent)}
+#histTit{border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
 html,body{height:100%;}
 body{
   font-family:'Archivo',system-ui,sans-serif;
@@ -464,6 +484,8 @@ body.sidebar-collapsed #sidebar {
   <div id="lblSizeWrap">
     <div class="cap"><span>Tamanho dos rótulos</span><span id="lblSizeVal" class="mono">100%</span></div>
     <input type="range" id="lblSize" min="50" max="180" value="100">
+    <div class="cap" style="margin-top:10px"><span>Espessura das linhas</span><span id="lineSizeVal" class="mono">100%</span></div>
+    <input type="range" id="lineSize" min="20" max="400" value="100">
   </div>
 
   <div id="searchWrap">
@@ -478,20 +500,34 @@ body.sidebar-collapsed #sidebar {
 <div id="mapWrap">
   <div id="map"></div>
 
+  <div id="camadasWrap">
+    <button id="camadasBtn" title="Camadas do mapa">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+    </button>
+    <div id="camadasMenu">
+      <div class="cm-tit">Fundo do mapa</div>
+      <label class="cm-op"><input type="radio" name="base" value="gsat" checked> Google Satellite</label>
+      <label class="cm-op"><input type="radio" name="base" value="ghyb"> Google Híbrido</label>
+      <label class="cm-op"><input type="radio" name="base" value="sat"> Esri Satélite</label>
+      <label class="cm-op"><input type="radio" name="base" value="hyb"> Esri Híbrido</label>
+      <label class="cm-op"><input type="radio" name="base" value="osm"> Mapa (OSM)</label>
+      <label class="cm-op"><input type="radio" name="base" value="topo"> Relevo</label>
+      <div class="cm-tit" id="histTit" style="display:none">Imagens históricas (Google Earth)</div>
+      <div id="histBox" style="display:none">
+        <div class="cm-hint">Escolha o ano da imagem de satélite:</div>
+        <input type="range" id="histRange" min="0" max="0" value="0" step="1">
+        <div id="histLabel">—</div>
+        <button type="button" id="histOff" class="cm-btn">Voltar ao atual</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toolbar">
     <div class="tb-group">
       <button class="tb-btn" id="menuBtn" title="Lista de polígonos">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         Lista
       </button>
-    </div>
-    <div class="tb-group" id="baseGroup">
-      <button class="tb-btn on" data-base="sat">Satélite</button>
-      <button class="tb-btn" data-base="hyb">Híbrido</button>
-      <button class="tb-btn" data-base="gsat">Sat G</button>
-      <button class="tb-btn" data-base="ghyb">Híb G</button>
-      <button class="tb-btn" data-base="osm">Mapa</button>
-      <button class="tb-btn" data-base="topo">Relevo</button>
     </div>
     <div class="tb-group">
       <button class="tb-btn on" id="lblBtn">Rótulos</button>
@@ -595,21 +631,90 @@ function gFallback(){
   if(currentBase===baseLayers.gsat||currentBase===baseLayers.ghyb){
     map.removeLayer(currentBase);
     currentBase=baseLayers.sat.addTo(map);
-    document.querySelectorAll('#baseGroup .tb-btn').forEach(b=>b.classList.toggle('on',b.dataset.base==='sat'));
+    baseAtual='sat';
+    var rb=document.querySelector('#camadasMenu input[value="sat"]'); if(rb) rb.checked=true;
     alert('Google Satellite indisponível — voltando pro Esri.');
   }
 }
 baseLayers.gsat.on('tileerror',gFallback);
 baseLayers.ghyb.on('tileerror',gFallback);
-let currentBase = baseLayers.sat.addTo(map);
+let currentBase = baseLayers.gsat.addTo(map);
+let baseAtual = 'gsat';
 L.control.scale({imperial:false, maxWidth:140}).addTo(map);
 
-document.getElementById('baseGroup').addEventListener('click', e=>{
-  const btn = e.target.closest('[data-base]'); if(!btn) return;
-  document.querySelectorAll('#baseGroup .tb-btn').forEach(b=>b.classList.remove('on'));
-  btn.classList.add('on');
-  map.removeLayer(currentBase);
-  currentBase = baseLayers[btn.dataset.base].addTo(map);
+// botão de camadas: abre/fecha o menu de fundo + histórico
+(function(){
+  const btn=document.getElementById('camadasBtn'), menu=document.getElementById('camadasMenu'),
+        wrap=document.getElementById('camadasWrap');
+  btn.addEventListener('click', e=>{ e.stopPropagation(); menu.classList.toggle('aberto'); });
+  document.addEventListener('click', e=>{ if(!wrap.contains(e.target)) menu.classList.remove('aberto'); });
+})();
+// ---------- Histórico de imagens (Esri World Imagery Wayback) ----------
+// Acervo gratuito de satélite datado (2014→hoje), estilo "imagens antigas" do Google Earth.
+// Sem chave: lê a config pública e cada release vira um tile layer por data.
+let histReleases = [];   // [{num, data, url}] ordenado do mais ANTIGO pro mais novo
+let histLayer = null, histAtivo = false;
+const WB_CFG = 'https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json';
+
+function carregaHistorico(){
+  fetch(WB_CFG).then(r=>r.json()).then(cfg=>{
+    var arr = [];
+    for(var num in cfg){
+      var it = cfg[num];
+      var url = (it.itemURL||'').replace('{level}','{z}').replace('{row}','{y}').replace('{col}','{x}');
+      var m = (it.itemTitle||'').match(/(\d{4}-\d{2}-\d{2})/);
+      var data = m ? m[1] : (it.releaseDateLabel||num);
+      if(url) arr.push({num:num, data:data, url:url});
+    }
+    // ordena por data crescente (mais antigo -> mais novo)
+    arr.sort(function(a,b){ return a.data<b.data?-1:(a.data>b.data?1:0); });
+    histReleases = arr;
+    if(!arr.length) return;
+    var rng = document.getElementById('histRange');
+    rng.min = 0; rng.max = arr.length-1; rng.value = arr.length-1;  // começa no mais recente
+    document.getElementById('histTit').style.display='';
+    document.getElementById('histBox').style.display='';
+    document.getElementById('histLabel').textContent = arr[arr.length-1].data;
+  }).catch(function(){
+    // sem internet ou serviço fora: mantém o histórico oculto, não quebra nada
+  });
+}
+function aplicaHistorico(i){
+  var rel = histReleases[i]; if(!rel) return;
+  if(histLayer){ map.removeLayer(histLayer); histLayer=null; }
+  histLayer = L.tileLayer(rel.url, {maxZoom:20, maxNativeZoom:18, attribution:'Esri Wayback '+rel.data}).addTo(map);
+  histLayer.bringToBack();
+  // esconde a base normal por baixo enquanto o histórico está ativo
+  if(currentBase && map.hasLayer(currentBase)) map.removeLayer(currentBase);
+  histAtivo = true;
+  document.getElementById('histLabel').textContent = rel.data;
+}
+function desligaHistorico(){
+  if(histLayer){ map.removeLayer(histLayer); histLayer=null; }
+  histAtivo = false;
+  if(currentBase && !map.hasLayer(currentBase)){ currentBase.addTo(map); currentBase.bringToBack&&currentBase.bringToBack(); }
+}
+(function(){
+  var rng=document.getElementById('histRange');
+  if(!rng) return;
+  rng.addEventListener('input', function(){ aplicaHistorico(+this.value); });
+  document.getElementById('histOff').addEventListener('click', function(){
+    desligaHistorico();
+    document.getElementById('histLabel').textContent = histReleases.length?histReleases[histReleases.length-1].data:'—';
+  });
+})();
+carregaHistorico();
+
+// troca de fundo pelos radios do menu
+document.querySelectorAll('#camadasMenu input[name="base"]').forEach(r=>{
+  r.addEventListener('change', function(){
+    if(!this.checked) return;
+    if(histAtivo) desligaHistorico();     // sair do modo histórico ao trocar de base
+    if(currentBase) map.removeLayer(currentBase);
+    currentBase = baseLayers[this.value].addTo(map);
+    currentBase.bringToBack && currentBase.bringToBack();
+    baseAtual = this.value;
+  });
 });
 
 // ---------- Estado ----------
@@ -617,7 +722,7 @@ const features = [];          // {id,name,desc,type,layer,label,area,perim,visib
 const labelGroup = L.layerGroup().addTo(map);
 let labelsOn = true, fillOn = true, pointsOn = true;
 let featSeq = 0;
-const prefs = {colors:{}, files:{}, lblScale:100, labelsOn:true, fillOn:true, pointsOn:true};
+const prefs = {colors:{}, files:{}, lblScale:100, lineScale:100, labelsOn:true, fillOn:true, pointsOn:true};
 function featKey(f){ return f.fileName+'|'+f.name; }
 function savePrefs(){
   prefs.labelsOn=labelsOn; prefs.fillOn=fillOn; prefs.pointsOn=pointsOn;
@@ -791,14 +896,16 @@ function addFeature(g, name, desc, st, fileName){
     const rings=[g.ring, ...g.holes];
     fillOp = st.noFill?0:(st.fill?Math.min(st.fill.opacity,.45):.12);
     layer=L.polygon(rings,{
-      color, weight:(st.width||2.5), opacity:1,
+      color, weight:(st.width||2.5)*escLinha(), opacity:1,
       fillColor:fillC,
       fillOpacity: (fillOn && fp.fill!==false)?fillOp:0
     });
     anchor=layer.getBounds().getCenter();
+    layer._wBase = (st.width||2.5);
   } else if(g.type==='line'){
     perim=pathLenM(g.pts,false);
-    layer=L.polyline(g.pts,{color, weight:(st.width||3), opacity:.95});
+    layer=L.polyline(g.pts,{color, weight:(st.width||3)*escLinha(), opacity:.95});
+    layer._wBase = (st.width||3);
     anchor=layer.getBounds().getCenter();
   } else { // point
     layer=L.circleMarker(g.pt,{radius:6, color, weight:2, fillColor:color, fillOpacity:.8});
@@ -949,6 +1056,20 @@ function applyLblScale(pct){
   $('lblSizeVal').textContent=pct+'%';
   scheduleLabelUpdate();
 }
+// ---------- Espessura das linhas (perímetros/contornos) ----------
+function escLinha(){ return (prefs.lineScale||100)/100; }
+function applyLineScale(pct){
+  prefs.lineScale = pct;
+  var s = escLinha();
+  features.forEach(function(f){
+    var l=f.layer;
+    if(l && l._wBase!=null && l.setStyle){
+      l.setStyle({weight: Math.max(0.5, l._wBase * s)});
+    }
+  });
+  var v=$('lineSizeVal'); if(v) v.textContent = pct+'%';
+  savePrefs();
+}
 let lblUpdateT=null;
 function scheduleLabelUpdate(){
   clearTimeout(lblUpdateT);
@@ -975,6 +1096,7 @@ function updateLabelVisibility(){
 map.on('zoomend', updateLabelVisibility);
 $('lblSize').addEventListener('input',e=>applyLblScale(parseInt(e.target.value)));
 $('lblSize').addEventListener('change',()=>savePrefs());
+$('lineSize').addEventListener('input',e=>applyLineScale(parseInt(e.target.value)));
 
 function toggleFeat(id){
   const f=features.find(x=>x.id===id); if(!f) return;
@@ -1630,6 +1752,9 @@ async function renderSavedChips(){
       const sc=prefs.lblScale||100;
       $('lblSize').value=sc;
       applyLblScale(sc);
+      const ls=prefs.lineScale||100;
+      $('lineSize').value=ls;
+      if($('lineSizeVal')) $('lineSizeVal').textContent=ls+'%';
     }
     const dr=recs.find(r=>r.name==='__draw__');
     if(dr && Array.isArray(dr.data)) drawings=dr.data;
