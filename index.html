@@ -5,8 +5,318 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Visualizador KMZ / KML</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js">
+/* =========================================================================
+   Tabela de Atributos: Edição Interativa
+   ========================================================================= */
+let attrCols = [];
+let attrRowsData = []; // [{f, attrs}]
+let sortCol = null;
+let sortAsc = true;
+
+function abrirTabelaAtributos(singleId){
+  const modal = $('attrModal');
+  if(!modal) return;
+  
+  let targetFeats = features.slice();
+  if(singleId !== undefined){
+    const found = features.find(x => x.id === singleId);
+    if(found) targetFeats = [found];
+  } else {
+    const sel = $('expLayer') ? $('expLayer').value : '*';
+    if(sel && sel !== '*') targetFeats = features.filter(f => f.fileName === sel);
+  }
+  
+  if(!targetFeats.length){ toast('Nenhuma feição selecionada.'); return; }
+  
+  // Coleta colunas que possuem pelo menos algum dado preenchido nas feições
+  const allCols = new Set(['NOME']);
+  targetFeats.forEach(f => {
+    if(f.attrs) Object.keys(f.attrs).forEach(k => allCols.add(k));
+  });
+  
+  // Filtra colunas: mantém se for 'NOME' ou se tiver pelo menos 1 valor não-vazio
+  attrCols = Array.from(allCols).filter(col => {
+    if(col === 'NOME') return true;
+    return targetFeats.some(f => f.attrs && f.attrs[col] !== undefined && String(f.attrs[col]).trim() !== '');
+  });
+  
+  attrRowsData = targetFeats.map(f => {
+    const row = Object.assign({}, f.attrs || {});
+    row['NOME'] = f.name;
+    return { feat: f, attrs: row };
+  });
+  
+  sortCol = null;
+  sortAsc = true;
+  
+  renderTabelaAtributos();
+  $('attrCountLabel').textContent = targetFeats.length + ' feição(ões)';
+  modal.classList.add('open');
+}
+
+function ordenarColuna(col){
+  if(sortCol === col){
+    sortAsc = !sortAsc;
+  } else {
+    sortCol = col;
+    sortAsc = true;
+  }
+  
+  attrRowsData.sort((a, b) => {
+    let v1 = a.attrs[col] !== undefined ? String(a.attrs[col]).trim() : '';
+    let v2 = b.attrs[col] !== undefined ? String(b.attrs[col]).trim() : '';
+    
+    let n1 = parseFloat(v1.replace(',', '.'));
+    let n2 = parseFloat(v2.replace(',', '.'));
+    
+    let res = 0;
+    if(!isNaN(n1) && !isNaN(n2)){
+      res = n1 - n2;
+    } else {
+      res = v1.localeCompare(v2, undefined, {numeric: true, sensitivity: 'base'});
+    }
+    
+    return sortAsc ? res : -res;
+  });
+  
+  renderTabelaAtributos();
+}
+
+function renderTabelaAtributos(){
+  const thead = $('attrThead');
+  const tbody = $('attrTbody');
+  if(!thead || !tbody) return;
+  
+  // Render Header com ordenação clicável
+  thead.innerHTML = '<tr><th style="width:40px;text-align:center;">#</th>' +
+    attrCols.map(c => {
+      let icon = ' ⇅';
+      if(sortCol === c) icon = sortAsc ? ' ▲' : ' ▼';
+      return `<th style="cursor:pointer;user-select:none;" onclick="ordenarColuna('${escapeHtml(c)}')">${escapeHtml(c)}<span style="font-size:10px;color:var(--accent);">${icon}</span></th>`;
+    }).join('') + '</tr>';
+    
+  // Render Body
+  tbody.innerHTML = attrRowsData.map((rowObj, rIdx) => {
+    const cells = attrCols.map(col => {
+      const val = rowObj.attrs[col] !== undefined ? rowObj.attrs[col] : '';
+      return `<td><input data-row="${rIdx}" data-col="${escapeHtml(col)}" value="${escapeHtml(String(val))}"></td>`;
+    }).join('');
+    return `<tr><td style="text-align:center;color:var(--muted);">${rIdx+1}</td>${cells}</tr>`;
+  }).join('');
+}
+
+function adicionarColunaAtributo(){
+  const nome = prompt('Digite o nome da nova coluna (ex: PROPRIETARIO, SITUACAO):');
+  if(!nome) return;
+  const colName = nome.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10);
+  if(!colName){ toast('Nome inválido.'); return; }
+  if(attrCols.includes(colName)){ toast('Coluna já existe.'); return; }
+  
+  attrCols.push(colName);
+  attrRowsData.forEach(r => r.attrs[colName] = '');
+  renderTabelaAtributos();
+}
+
+function removerColunaAtributo(){
+  if(attrCols.length <= 1){ toast('Não é possível remover todas as colunas.'); return; }
+  const colName = prompt('Digite o nome da coluna a remover:\n(' + attrCols.join(', ') + ')');
+  if(!colName) return;
+  const target = colName.trim().toUpperCase();
+  const idx = attrCols.indexOf(target);
+  if(idx < 0){ toast('Coluna não encontrada.'); return; }
+  
+  attrCols.splice(idx, 1);
+  attrRowsData.forEach(r => delete r.attrs[target]);
+  renderTabelaAtributos();
+}
+
+function salvarTabelaAtributos(){
+  const inputs = document.querySelectorAll('#attrTbody input');
+  inputs.forEach(inp => {
+    const rIdx = parseInt(inp.dataset.row);
+    const col = inp.dataset.col;
+    if(attrRowsData[rIdx]){
+      attrRowsData[rIdx].attrs[col] = inp.value.trim();
+    }
+  });
+  
+  // Atualiza feições com novos atributos
+  attrRowsData.forEach(r => {
+    r.feat.attrs = Object.assign({}, r.attrs);
+    if(r.attrs['NOME'] && r.attrs['NOME'] !== r.feat.name){
+      r.feat.name = r.attrs['NOME'];
+      const nmEl = r.feat.el ? r.feat.el.querySelector('.nm') : null;
+      if(nmEl) nmEl.textContent = r.feat.name;
+    }
+  });
+  
+  fecharTabelaAtributos();
+  toast('Atributos atualizados com sucesso!', 2500);
+}
+
+function fecharTabelaAtributos(){
+  const modal = $('attrModal');
+  if(modal) modal.classList.remove('open');
+}
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
+/* =========================================================================
+   Tabela de Atributos: Edição Interativa
+   ========================================================================= */
+let attrCols = [];
+let attrRowsData = []; // [{f, attrs}]
+let sortCol = null;
+let sortAsc = true;
+
+function abrirTabelaAtributos(singleId){
+  const modal = $('attrModal');
+  if(!modal) return;
+  
+  let targetFeats = features.slice();
+  if(singleId !== undefined){
+    const found = features.find(x => x.id === singleId);
+    if(found) targetFeats = [found];
+  } else {
+    const sel = $('expLayer') ? $('expLayer').value : '*';
+    if(sel && sel !== '*') targetFeats = features.filter(f => f.fileName === sel);
+  }
+  
+  if(!targetFeats.length){ toast('Nenhuma feição selecionada.'); return; }
+  
+  // Coleta colunas que possuem pelo menos algum dado preenchido nas feições
+  const allCols = new Set(['NOME']);
+  targetFeats.forEach(f => {
+    if(f.attrs) Object.keys(f.attrs).forEach(k => allCols.add(k));
+  });
+  
+  // Filtra colunas: mantém se for 'NOME' ou se tiver pelo menos 1 valor não-vazio
+  attrCols = Array.from(allCols).filter(col => {
+    if(col === 'NOME') return true;
+    return targetFeats.some(f => f.attrs && f.attrs[col] !== undefined && String(f.attrs[col]).trim() !== '');
+  });
+  
+  attrRowsData = targetFeats.map(f => {
+    const row = Object.assign({}, f.attrs || {});
+    row['NOME'] = f.name;
+    return { feat: f, attrs: row };
+  });
+  
+  sortCol = null;
+  sortAsc = true;
+  
+  renderTabelaAtributos();
+  $('attrCountLabel').textContent = targetFeats.length + ' feição(ões)';
+  modal.classList.add('open');
+}
+
+function ordenarColuna(col){
+  if(sortCol === col){
+    sortAsc = !sortAsc;
+  } else {
+    sortCol = col;
+    sortAsc = true;
+  }
+  
+  attrRowsData.sort((a, b) => {
+    let v1 = a.attrs[col] !== undefined ? String(a.attrs[col]).trim() : '';
+    let v2 = b.attrs[col] !== undefined ? String(b.attrs[col]).trim() : '';
+    
+    let n1 = parseFloat(v1.replace(',', '.'));
+    let n2 = parseFloat(v2.replace(',', '.'));
+    
+    let res = 0;
+    if(!isNaN(n1) && !isNaN(n2)){
+      res = n1 - n2;
+    } else {
+      res = v1.localeCompare(v2, undefined, {numeric: true, sensitivity: 'base'});
+    }
+    
+    return sortAsc ? res : -res;
+  });
+  
+  renderTabelaAtributos();
+}
+
+function renderTabelaAtributos(){
+  const thead = $('attrThead');
+  const tbody = $('attrTbody');
+  if(!thead || !tbody) return;
+  
+  // Render Header com ordenação clicável
+  thead.innerHTML = '<tr><th style="width:40px;text-align:center;">#</th>' +
+    attrCols.map(c => {
+      let icon = ' ⇅';
+      if(sortCol === c) icon = sortAsc ? ' ▲' : ' ▼';
+      return `<th style="cursor:pointer;user-select:none;" onclick="ordenarColuna('${escapeHtml(c)}')">${escapeHtml(c)}<span style="font-size:10px;color:var(--accent);">${icon}</span></th>`;
+    }).join('') + '</tr>';
+    
+  // Render Body
+  tbody.innerHTML = attrRowsData.map((rowObj, rIdx) => {
+    const cells = attrCols.map(col => {
+      const val = rowObj.attrs[col] !== undefined ? rowObj.attrs[col] : '';
+      return `<td><input data-row="${rIdx}" data-col="${escapeHtml(col)}" value="${escapeHtml(String(val))}"></td>`;
+    }).join('');
+    return `<tr><td style="text-align:center;color:var(--muted);">${rIdx+1}</td>${cells}</tr>`;
+  }).join('');
+}
+
+function adicionarColunaAtributo(){
+  const nome = prompt('Digite o nome da nova coluna (ex: PROPRIETARIO, SITUACAO):');
+  if(!nome) return;
+  const colName = nome.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10);
+  if(!colName){ toast('Nome inválido.'); return; }
+  if(attrCols.includes(colName)){ toast('Coluna já existe.'); return; }
+  
+  attrCols.push(colName);
+  attrRowsData.forEach(r => r.attrs[colName] = '');
+  renderTabelaAtributos();
+}
+
+function removerColunaAtributo(){
+  if(attrCols.length <= 1){ toast('Não é possível remover todas as colunas.'); return; }
+  const colName = prompt('Digite o nome da coluna a remover:\n(' + attrCols.join(', ') + ')');
+  if(!colName) return;
+  const target = colName.trim().toUpperCase();
+  const idx = attrCols.indexOf(target);
+  if(idx < 0){ toast('Coluna não encontrada.'); return; }
+  
+  attrCols.splice(idx, 1);
+  attrRowsData.forEach(r => delete r.attrs[target]);
+  renderTabelaAtributos();
+}
+
+function salvarTabelaAtributos(){
+  const inputs = document.querySelectorAll('#attrTbody input');
+  inputs.forEach(inp => {
+    const rIdx = parseInt(inp.dataset.row);
+    const col = inp.dataset.col;
+    if(attrRowsData[rIdx]){
+      attrRowsData[rIdx].attrs[col] = inp.value.trim();
+    }
+  });
+  
+  // Atualiza feições com novos atributos
+  attrRowsData.forEach(r => {
+    r.feat.attrs = Object.assign({}, r.attrs);
+    if(r.attrs['NOME'] && r.attrs['NOME'] !== r.feat.name){
+      r.feat.name = r.attrs['NOME'];
+      const nmEl = r.feat.el ? r.feat.el.querySelector('.nm') : null;
+      if(nmEl) nmEl.textContent = r.feat.name;
+    }
+  });
+  
+  fecharTabelaAtributos();
+  toast('Atributos atualizados com sucesso!', 2500);
+}
+
+function fecharTabelaAtributos(){
+  const modal = $('attrModal');
+  if(modal) modal.classList.remove('open');
+}
+
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -153,6 +463,17 @@ body.sidebar-collapsed #sidebar {
 .chip .ffill.fon{color:var(--accent)}
 .chip .fx{border:none;background:var(--line);color:var(--muted);width:17px;height:17px;border-radius:50%;cursor:pointer;font-size:.72rem;line-height:1;flex:none}
 .chip .fx:hover{background:var(--warn);color:var(--accent-ink)}
+#exportWrap{margin:0 16px 12px}
+#exportWrap .cap{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+#expLayer{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:.82rem;margin-bottom:7px}
+#expBtns{display:flex;gap:6px}
+.expBtn{flex:1;padding:8px 4px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:.78rem;font-weight:600;cursor:pointer}
+.expBtn:hover{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.expHint{font-size:.68rem;color:var(--muted);margin-top:6px}
+.chip.raster{background:rgba(224,164,75,.12);border-color:rgba(224,164,75,.5)}
+.chip.raster .rop{width:52px;accent-color:var(--accent)}
+.chip.raster .rvis{background:none;border:none;color:var(--muted);font-size:.9rem;cursor:pointer;padding:0 2px;line-height:1;flex:none}
+.chip.raster .rvis.on{color:var(--accent)}
 #lblSizeWrap{margin:0 16px 10px;display:none}
 #lblSizeWrap .cap{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;display:flex;justify-content:space-between}
 #lblSizeWrap input[type=range]{width:100%;accent-color:var(--accent);height:20px}
@@ -181,13 +502,55 @@ body.sidebar-collapsed #sidebar {
 .feat{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:8px;
   padding:8px;
   margin:3px 0;
   border-radius:8px;
   cursor:pointer;
   border:1px solid transparent;
   transition:background .12s;
+  position:relative;
+}
+.feat .eye, .feat .exp-single-btn{
+  flex:none;border:none;background:none;cursor:pointer;
+  color:var(--muted);padding:4px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+}
+.feat .eye:hover, .feat .exp-single-btn:hover{color:var(--text);background:var(--line)}
+.feat .eye.off{color:#5a6653}
+
+/* Menu Dropdown de Exportação Individual */
+.exp-dropdown {
+  display: none;
+  position: absolute;
+  right: 10px;
+  top: 38px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.6);
+  z-index: 1300;
+  padding: 4px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100px;
+}
+.exp-dropdown.open { display: flex; }
+.exp-dropdown button {
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: .75rem;
+  font-weight: 600;
+  text-align: left;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.exp-dropdown button:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 .feat:hover{background:var(--panel-2)}
 .feat.active{border-color:var(--accent);background:rgba(164,214,94,.08)}
@@ -216,12 +579,7 @@ body.sidebar-collapsed #sidebar {
 }
 .feat .clr::-webkit-color-swatch-wrapper{padding:2px}
 .feat .clr::-webkit-color-swatch{border:none;border-radius:3px}
-.feat .eye{
-  flex:none;border:none;background:none;cursor:pointer;
-  color:var(--muted);padding:4px;border-radius:6px;
-}
-.feat .eye:hover{color:var(--text);background:var(--line)}
-.feat .eye.off{color:#5a6653}
+
 
 #emptyMsg{
   color:var(--muted);
@@ -441,6 +799,26 @@ body.sidebar-collapsed #sidebar {
   #toolbar{top:10px;left:10px;right:10px}
   .tb-btn{padding:9px 11px;font-size:.78rem}
 }
+
+/* Modal Tabela de Atributos */
+#attrModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2000;align-items:center;justify-content:center;padding:16px;}
+#attrModal.open{display:flex;}
+.attr-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:95%;max-width:1050px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.6);}
+.attr-header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+.attr-header h2{font-size:1.1rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;}
+.attr-toolbar{padding:10px 18px;background:var(--panel-2);border-bottom:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.attr-toolbar button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;}
+.attr-toolbar button:hover{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+.attr-body{flex:1;overflow:auto;padding:12px 18px;}
+.attr-table{width:100%;border-collapse:collapse;font-size:12px;}
+.attr-table th{background:var(--panel-2);color:var(--accent);padding:8px 10px;text-align:left;border:1px solid var(--line);position:sticky;top:0;z-index:10;white-space:nowrap;}
+.attr-table td{padding:4px 6px;border:1px solid var(--line);white-space:nowrap;}
+.attr-table input{width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:12px;padding:4px;outline:none;}
+.attr-table input:focus{background:var(--panel-2);border-radius:4px;}
+.attr-footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;}
+.attr-footer button{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--panel-2);color:var(--text);}
+.attr-footer button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+
 </style>
 </head>
 <body>
@@ -466,10 +844,10 @@ body.sidebar-collapsed #sidebar {
 
   <div id="dropzone">
     <strong>Toque para escolher</strong> ou arraste arquivos<br>
-    .kmz &nbsp;•&nbsp; .kml &nbsp;(múltiplos aceitos)<br>
-    <span style="font-size:.72rem">ficam salvos neste dispositivo</span>
+    .kmz &nbsp;•&nbsp; .kml &nbsp;•&nbsp; .shp &nbsp;•&nbsp; .zip &nbsp;•&nbsp; .tif<br>
+    <span style="font-size:.72rem">shapefile: mande .shp + .dbf + .prj juntos (ou um .zip)</span>
   </div>
-  <input type="file" id="fileInput" accept=".kmz,.kml" multiple>
+  <input type="file" id="fileInput" accept=".kmz,.kml,.shp,.dbf,.prj,.shx,.cpg,.zip,.tif,.tiff,.geotiff,.ecw" multiple>
 
   <div id="summary">
     <span class="big" id="sumCount">0 polígonos</span><br>
@@ -479,6 +857,20 @@ body.sidebar-collapsed #sidebar {
   <div id="savedWrap">
     <div class="cap">Arquivos salvos</div>
     <div id="savedList"></div>
+  </div>
+
+    <div id="attrWrap" style="margin:0 16px 10px;display:none">
+    <button id="openAttrBtn" style="width:100%;padding:9px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;" onclick="abrirTabelaAtributos()">📋 Tabela de Atributos</button>
+  </div>
+  <div id="exportWrap" style="display:none">
+    <div class="cap">Exportar camada</div>
+    <select id="expLayer"></select>
+    <div id="expBtns">
+      <button class="expBtn" data-fmt="kml">KML</button>
+      <button class="expBtn" data-fmt="kmz">KMZ</button>
+      <button class="expBtn" data-fmt="shp">Shapefile</button>
+    </div>
+    <div class="expHint">Gera o arquivo pronto pra compartilhar/enviar.</div>
   </div>
 
   <div id="lblSizeWrap">
@@ -741,6 +1133,11 @@ function loading(on,msg){
   if(msg) $('loadMsg').textContent = msg;
 }
 
+// Fechar menus dropdown de exportação ao clicar fora
+document.addEventListener('click', () => {
+  document.querySelectorAll('.exp-dropdown').forEach(d => d.classList.remove('open'));
+});
+
 // ---------- Geodésia ----------
 const R = 6378137;
 function ringAreaM2(latlngs){ // esférico (mesma fórmula do Turf)
@@ -881,7 +1278,8 @@ function parseKmlText(xmlText, fileName){
 }
 
 // ---------- Criação das camadas ----------
-function addFeature(g, name, desc, st, fileName){
+function addFeature(g, name, desc, st, fileName, attrs){
+  attrs = attrs || {};
   const id=featSeq++;
   const fp=(prefs.files&&prefs.files[fileName])||{};
   const savedClr = prefs.colors[fileName+'|'+name] || fp.color;
@@ -912,14 +1310,28 @@ function addFeature(g, name, desc, st, fileName){
     anchor=g.pt;
   }
 
-  layer.bindPopup(
-    `<b>${escapeHtml(name)}</b><br>`+
-    (area?`Área: <span class="pm">${fmtArea(area)}</span><br>`:'')+
-    (perim?`${g.type==='polygon'?'Perímetro':'Comprimento'}: <span class="pm">${fmtDist(perim)}</span><br>`:'')+
-    (g.type==='point'?`<span class="pm">${anchor.lat.toFixed(6)}, ${anchor.lng.toFixed(6)}</span><br>`:'')+
-    `<span class="pm">${escapeHtml(fileName)}</span>`+
-    (desc?`<br><span style="color:var(--muted);font-size:.75rem">${escapeHtml(desc.slice(0,220))}</span>`:'')
-  );
+  layer.bindPopup(function(){
+    const saved = (prefs.notes && prefs.notes[fileName+'|'+name]);
+    const fObj = features.find(x=>x.id===id) || {};
+    const note = saved !== undefined ? saved : cleanNote(fObj.desc);
+    return `<div style="min-width:215px;">`+
+      `<b>${escapeHtml(name)}</b><br>`+
+      (area?`Área: <span class="pm">${fmtArea(area)}</span><br>`:'')+
+      (perim?`${g.type==='polygon'?'Perímetro':'Comprimento'}: <span class="pm">${fmtDist(perim)}</span><br>`:'')+
+      (g.type==='point'?`<span class="pm">${anchor.lat.toFixed(6)}, ${anchor.lng.toFixed(6)}</span><br>`:'')+
+      `<span class="pm">${escapeHtml(fileName)}</span>`+
+      `<div style="margin-top:8px;margin-bottom:6px;">`+
+        `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Observação:</label>`+
+        `<textarea id="popNote_${id}" placeholder="Digite uma observação…" style="width:100%;height:54px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:6px;font-size:11.5px;font-family:inherit;resize:vertical;outline:none;" oninput="salvarNota(${id}, this.value, false)" onblur="salvarNota(${id}, this.value, false)" onchange="salvarNota(${id}, this.value, false)">${escapeHtml(note)}</textarea>`+
+        `<button style="margin-top:4px;width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:5px;padding:5px;font-size:11px;font-weight:700;cursor:pointer" onclick="salvarNotaComAviso(${id})">💾 Salvar Observação</button>`+
+      `</div>`+
+      `<div style="display:flex;gap:4px;margin-top:8px;">`+
+        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kmz')">KMZ</button>`+
+        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kml')">KML</button>`+
+        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'shp')">SHP</button>`+
+      `</div>`+
+      `</div>`;
+  });
   if(!(g.type==='point' && !pointsOn)) layer.addTo(map);
   layer.on('click',()=>setActive(id,false));
 
@@ -935,7 +1347,7 @@ function addFeature(g, name, desc, st, fileName){
   }
 
   features.push({id,name,desc,type:g.type,layer,label,area,perim,visible:true,fileName,
-                 geom:g, color, fillOp});
+                 geom:g, color, fillOp, attrs: JSON.parse(JSON.stringify(attrs))});
   renderListItem(features[features.length-1]);
   updateSummary();
   scheduleLabelUpdate();
@@ -1016,6 +1428,30 @@ function paintFeat(f, color){ // aplica cor visualmente (sem salvar)
   const sh=f.el&&f.el.querySelector('.shape'); if(sh) sh.innerHTML=shapeSvg(f);
   const ci=f.el&&f.el.querySelector('.clr'); if(ci&&ci.value!==color) ci.value=color;
 }
+
+function cleanNote(str){
+  if(!str) return '';
+  const trimmed = str.trim();
+  if(/<[a-z][\s\S]*>/i.test(trimmed)) return ''; // ignora códigos e tabelas HTML brutos do KML original
+  return trimmed;
+}
+
+function salvarNota(id, text, avisar){
+  const f = features.find(x => x.id === id);
+  if(!f) return;
+  f.desc = text;
+  if(!prefs.notes) prefs.notes = {};
+  prefs.notes[featKey(f)] = text;
+  savePrefs();
+  if(avisar) toast('Observação salva!', 2000);
+}
+
+function salvarNotaComAviso(id){
+  const el = document.getElementById('popNote_' + id);
+  const val = el ? el.value : '';
+  salvarNota(id, val, true);
+}
+
 function setFeatColor(f, color){ // cor individual (sobrepõe a do arquivo)
   paintFeat(f, color);
   prefs.colors[featKey(f)]=color;
@@ -1126,6 +1562,7 @@ function updateSummary(){
   $('summary').style.display='block';
   $('searchWrap').style.display='block';
   $('lblSizeWrap').style.display='block';
+  if($('attrWrap')) $('attrWrap').style.display='block';
 }
 
 // filtro
@@ -1582,6 +2019,368 @@ function utmToLatLng(zone, hemi, E, N){
   return L.latLng(lat*180/Math.PI, lon0+lng*180/Math.PI);
 }
 
+/* =========================================================================
+   Importação de Shapefile / GeoTIFF  +  Exportação KML / KMZ / SHP
+   ========================================================================= */
+function _magicZip(u8){ return u8[0]===0x50 && u8[1]===0x4B; }
+function _magicTiff(u8){ return (u8[0]===0x49&&u8[1]===0x49&&u8[2]===0x2A&&u8[3]===0x00)||(u8[0]===0x4D&&u8[1]===0x4D&&u8[2]===0x00&&u8[3]===0x2A); }
+function _baseName(n){ return n.replace(/\.[^.]+$/,''); }
+function _ext(n){ const m=n.toLowerCase().match(/\.([^.]+)$/); return m?m[1]:''; }
+
+/* ----- projeção do .prj ----- */
+function parsePrj(prjText){
+  if(!prjText) return {tipo:'desconhecido'};
+  const w=prjText.replace(/\s+/g,' ');
+  if(!/PROJCS/i.test(w)) return {tipo:'geografico'};
+  const par=(nome)=>{ const m=w.match(new RegExp('PARAMETER\\s*\\[\\s*"'+nome+'"\\s*,\\s*(-?[0-9.]+)','i')); return m?parseFloat(m[1]):null; };
+  let lon0=par('central_meridian'),k0=par('scale_factor'),fe=par('false_easting'),fn=par('false_northing'),lat0=par('latitude_of_origin');
+  if(lon0==null){ const mz=w.match(/UTM zone\s*(\d+)\s*([NS])/i);
+    if(mz){ const zona=parseInt(mz[1],10),sul=/S/i.test(mz[2]); lon0=(zona-1)*6-180+3; k0=0.9996; fe=500000; fn=sul?10000000:0; lat0=0; } }
+  if(lon0!=null&&k0!=null&&fe!=null&&fn!=null) return {tipo:'tm',lon0,k0,fe,fn,lat0:lat0||0};
+  return {tipo:'desconhecido'};
+}
+const _A=6378137.0,_F=1/298.257223563,_E2=_F*(2-_F);
+function tmInverso(E,N,p){
+  const e2=_E2,a=_A,x=E-p.fe,y=N-p.fn,M=y/p.k0;
+  const mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const fp=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu)+(1097*e1**4/512)*Math.sin(8*mu);
+  const ep2=e2/(1-e2),C1=ep2*Math.cos(fp)**2,T1=Math.tan(fp)**2;
+  const R1=a*(1-e2)/Math.pow(1-e2*Math.sin(fp)**2,1.5),N1=a/Math.sqrt(1-e2*Math.sin(fp)**2);
+  const D=x/(N1*p.k0),Q1=N1*Math.tan(fp)/R1;
+  const lat=fp-Q1*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-3*C1*C1-252*ep2)*D**6/720);
+  const lon=(p.lon0*Math.PI/180)+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(fp);
+  return [lat*180/Math.PI, lon*180/Math.PI];
+}
+function xyParaLatLng(x,y,crs){
+  if(crs.tipo==='geografico') return [y,x];
+  if(crs.tipo==='tm') return tmInverso(x,y,crs);
+  if(Math.abs(x)<=180&&Math.abs(y)<=90) return [y,x];
+  return tmInverso(x,y,{lon0:-51,k0:0.9996,fe:500000,fn:10000000,lat0:0});
+}
+/* ----- DBF ----- */
+function lerDbf(buf){
+  if(!buf) return {cols:[],rows:[]};
+  const dv=new DataView(buf),u8=new Uint8Array(buf);
+  let nRec=dv.getUint32(4,true); const headerSize=dv.getUint16(8,true),recSize=dv.getUint16(10,true);
+  if(!nRec||nRec>5e6){ if(recSize>0) nRec=Math.floor((buf.byteLength-headerSize)/recSize); }
+  const cols=[]; let off=32;
+  while(u8[off]!==0x0D && off<headerSize-1){
+    let nome=''; for(let i=0;i<11&&u8[off+i];i++) nome+=String.fromCharCode(u8[off+i]);
+    cols.push({nome:nome.replace(/\0+$/,''),tipo:String.fromCharCode(u8[off+11]),len:u8[off+16]}); off+=32;
+  }
+  const dec=new TextDecoder('latin1'),rows=[];
+  for(let r=0;r<nRec;r++){
+    const base=headerSize+r*recSize; if(base+recSize>buf.byteLength) break;
+    if(u8[base]===0x2A) continue;
+    let p=base+1; const rec={};
+    for(const c of cols){ rec[c.nome]=dec.decode(u8.subarray(p,p+c.len)).trim(); p+=c.len; }
+    rows.push(rec);
+  }
+  return {cols,rows};
+}
+/* ----- leitura de shapefile ----- */
+function lerShapefile(shpBuf,dbfBuf,prjText){
+  const dv=new DataView(shpBuf);
+  if(dv.getInt32(0,false)!==9994) throw new Error('Arquivo .shp inválido');
+  const crs=parsePrj(prjText),dbf=lerDbf(dbfBuf),feats=[];
+  let off=100; const end=shpBuf.byteLength; let ri=0;
+  while(off+8<=end){
+    const recLen=dv.getInt32(off+4,false)*2,cOff=off+8,t=dv.getInt32(cOff,true),attrs=dbf.rows[ri]||{};
+    if(t===1||t===11||t===21){
+      feats.push({type:'point',coords:[xyParaLatLng(dv.getFloat64(cOff+4,true),dv.getFloat64(cOff+12,true),crs)],attrs});
+    } else if(t===8||t===18||t===28){
+      const nP=dv.getInt32(cOff+36,true); let p=cOff+40;
+      for(let i=0;i<nP;i++){ feats.push({type:'point',coords:[xyParaLatLng(dv.getFloat64(p,true),dv.getFloat64(p+8,true),crs)],attrs}); p+=16; }
+    } else if(t===3||t===13||t===23||t===5||t===15||t===25){
+      const numParts=dv.getInt32(cOff+36,true),numPoints=dv.getInt32(cOff+40,true); let p=cOff+44; const parts=[];
+      for(let i=0;i<numParts;i++){ parts.push(dv.getInt32(p,true)); p+=4; }
+      const allPts=[]; for(let i=0;i<numPoints;i++) allPts.push(xyParaLatLng(dv.getFloat64(p+i*16,true),dv.getFloat64(p+i*16+8,true),crs));
+      const isPoly=(t===5||t===15||t===25),aneis=[];
+      for(let i=0;i<numParts;i++){ const a=parts[i],b=(i+1<numParts)?parts[i+1]:numPoints; aneis.push(allPts.slice(a,b)); }
+      if(isPoly) feats.push({type:'polygon',coords:aneis,attrs});
+      else for(const seg of aneis) feats.push({type:'line',coords:[seg],attrs});
+    }
+    if(recLen<=0) break; off=cOff+recLen; ri++;
+  }
+  return {feats,crs,dbfCols:dbf.cols};
+}
+/* ----- escrita de shapefile (WGS84) ----- */
+const PRJ_WGS84='GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]';
+function _areaSigned(ll){ let a=0; for(let i=0;i<ll.length;i++){ const [x1,y1]=ll[i],[x2,y2]=ll[(i+1)%ll.length]; a+=(x1*y2-x2*y1);} return a/2; }
+function _flat(feats){
+  return feats.map(f=>{
+    if(f.type==='point') return {pts:[[f.pt[1],f.pt[0]]]};
+    if(f.type==='line')  return {parts:[f.pts.map(p=>[p[1],p[0]])]};
+    const parts=f.rings.map((r,i)=>{ const ll=r.map(p=>[p[1],p[0]]); const cw=_areaSigned(ll)<0;
+      if(i===0&&!cw) ll.reverse(); if(i>0&&cw) ll.reverse(); return ll; });
+    return {parts};
+  });
+}
+function escreverShapefile(feats,tipoGeom){
+  const SHPTYPE=tipoGeom==='point'?1:tipoGeom==='line'?3:5;
+  const flat=_flat(feats),recs=[];
+  let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+  const upd=(x,y)=>{ if(x<mnX)mnX=x;if(x>mxX)mxX=x;if(y<mnY)mnY=y;if(y>mxY)mxY=y; };
+  flat.forEach(g=>{
+    if(SHPTYPE===1){ const [x,y]=g.pts[0]; upd(x,y); recs.push({contentLen:20}); }
+    else{ let nPts=0; g.parts.forEach(pr=>{ nPts+=pr.length; pr.forEach(([x,y])=>upd(x,y)); }); recs.push({contentLen:4+32+4+4+4*g.parts.length+16*nPts,parts:g.parts,nPts}); }
+  });
+  let shpBytes=100; recs.forEach(r=>shpBytes+=8+r.contentLen);
+  const shp=new ArrayBuffer(shpBytes),sdv=new DataView(shp);
+  sdv.setInt32(0,9994,false); sdv.setInt32(24,shpBytes/2,false); sdv.setInt32(28,1000,true); sdv.setInt32(32,SHPTYPE,true);
+  sdv.setFloat64(36,mnX,true); sdv.setFloat64(44,mnY,true); sdv.setFloat64(52,mxX,true); sdv.setFloat64(60,mxY,true);
+  const shx=new ArrayBuffer(100+recs.length*8),xdv=new DataView(shx);
+  xdv.setInt32(0,9994,false); xdv.setInt32(24,(100+recs.length*8)/2,false); xdv.setInt32(28,1000,true); xdv.setInt32(32,SHPTYPE,true);
+  xdv.setFloat64(36,mnX,true); xdv.setFloat64(44,mnY,true); xdv.setFloat64(52,mxX,true); xdv.setFloat64(60,mxY,true);
+  let off=100;
+  recs.forEach((r,i)=>{
+    const g=flat[i],cw2=r.contentLen/2;
+    sdv.setInt32(off,i+1,false); sdv.setInt32(off+4,cw2,false);
+    xdv.setInt32(100+i*8,off/2,false); xdv.setInt32(100+i*8+4,cw2,false);
+    let p=off+8; sdv.setInt32(p,SHPTYPE,true); p+=4;
+    if(SHPTYPE===1){ const [x,y]=g.pts[0]; sdv.setFloat64(p,x,true); sdv.setFloat64(p+8,y,true); p+=16; }
+    else{
+      let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;
+      g.parts.forEach(pr=>pr.forEach(([x,y])=>{ if(x<a)a=x;if(x>c)c=x;if(y<b)b=y;if(y>d)d=y; }));
+      sdv.setFloat64(p,a,true);sdv.setFloat64(p+8,b,true);sdv.setFloat64(p+16,c,true);sdv.setFloat64(p+24,d,true); p+=32;
+      sdv.setInt32(p,g.parts.length,true); p+=4; sdv.setInt32(p,r.nPts,true); p+=4;
+      let acc=0; g.parts.forEach(pr=>{ sdv.setInt32(p,acc,true); p+=4; acc+=pr.length; });
+      g.parts.forEach(pr=>pr.forEach(([x,y])=>{ sdv.setFloat64(p,x,true); sdv.setFloat64(p+8,y,true); p+=16; }));
+    }
+    off=p;
+  });
+  return {shp,shx,dbf:escreverDbf(feats),prj:PRJ_WGS84};
+}
+function escreverDbf(feats){
+  // Coleta dinamica de campos dos atributos das feições
+  const colSet = new Set(['NOME', 'AREA_HA', 'PERIM_M', 'ARQUIVO']);
+  feats.forEach(f => {
+    if(f.attrs) Object.keys(f.attrs).forEach(k => colSet.add(k.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0,10)));
+  });
+  
+  const campos = Array.from(colSet).map(nm => ({
+    nome: nm,
+    tipo: (nm === 'AREA_HA' || nm === 'PERIM_M') ? 'N' : 'C',
+    len: (nm === 'AREA_HA' || nm === 'PERIM_M') ? 16 : 80,
+    dec: (nm === 'AREA_HA' ? 4 : nm === 'PERIM_M' ? 2 : 0)
+  }));
+  
+  const recSize=1+campos.reduce((s,c)=>s+c.len,0),headerSize=32+campos.length*32+1,total=headerSize+feats.length*recSize+1;
+  const buf=new ArrayBuffer(total),u8=new Uint8Array(buf),dv=new DataView(buf);
+  u8[0]=0x03; const now=new Date(); u8[1]=now.getFullYear()-1900; u8[2]=now.getMonth()+1; u8[3]=now.getDate();
+  dv.setUint32(4,feats.length,true); dv.setUint16(8,headerSize,true); dv.setUint16(10,recSize,true);
+  let off=32; const enc=s=>{ let o=''; for(let i=0;i<s.length;i++){ o+=s.charCodeAt(i)>255?'?':s[i]; } return o; };
+  campos.forEach(c=>{ const nm=c.nome.slice(0,10); for(let i=0;i<nm.length;i++) u8[off+i]=nm.charCodeAt(i);
+    u8[off+11]=c.tipo.charCodeAt(0); u8[off+16]=c.len; u8[off+17]=c.dec||0; off+=32; });
+  u8[off]=0x0D; off++;
+  const put=(str,start,len)=>{ const s=enc(String(str)).slice(0,len); for(let i=0;i<s.length;i++) u8[start+i]=s.charCodeAt(i); for(let i=s.length;i<len;i++) u8[start+i]=0x20; };
+  const putNum=(v,start,len,dec)=>{ let s=(v==null||!isFinite(v))?'':v.toFixed(dec); s=s.slice(0,len); const pad=len-s.length;
+    for(let i=0;i<pad;i++) u8[start+i]=0x20; for(let i=0;i<s.length;i++) u8[start+pad+i]=s.charCodeAt(i); };
+    
+  feats.forEach((f,r)=>{
+    let p=headerSize+r*recSize; u8[p]=0x20; p++;
+    const at = f.attrs || {};
+    campos.forEach(c => {
+      let val = at[c.nome] !== undefined ? at[c.nome] : at[c.nome.toLowerCase()];
+      if(val === undefined){
+        if(c.nome === 'NOME') val = f.name || '';
+        else if(c.nome === 'AREA_HA') val = f.area ? f.area/10000 : 0;
+        else if(c.nome === 'PERIM_M') val = f.perim || 0;
+        else if(c.nome === 'ARQUIVO') val = f.fileName || '';
+        else val = '';
+      }
+      if(c.tipo === 'N') putNum(parseFloat(val), p, c.len, c.dec);
+      else put(val, p, c.len);
+      p += c.len;
+    });
+  });
+  u8[total-1]=0x1A; return buf;
+}
+/* ----- KML ----- */
+function kmlCor(hex,alpha){ const h=(hex||'#a4d65e').replace('#',''); const al=Math.round((alpha==null?1:alpha)*255).toString(16).padStart(2,'0'); return al+h.slice(4,6)+h.slice(2,4)+h.slice(0,2); }
+function _kesc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c])); }
+function _kcoords(pts){ return pts.map(p=>p[1]+','+p[0]+',0').join(' '); }
+function featsParaKML(grupos,nomeDoc){
+  let s='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>'+_kesc(nomeDoc||'Exportação')+'</name>\n';
+  const est=new Set();
+  grupos.forEach(g=>g.feats.forEach(f=>{ const id='s_'+(f.color||'#a4d65e').replace('#','');
+    if(!est.has(id)){ est.add(id); s+='<Style id="'+id+'"><LineStyle><color>'+kmlCor(f.color,1)+'</color><width>2</width></LineStyle><PolyStyle><color>'+kmlCor(f.color,.35)+'</color></PolyStyle><IconStyle><color>'+kmlCor(f.color,1)+'</color></IconStyle></Style>\n'; } }));
+  grupos.forEach(g=>{ s+='<Folder>\n<name>'+_kesc(g.nome)+'</name>\n';
+    g.feats.forEach(f=>{ const id='#s_'+(f.color||'#a4d65e').replace('#','');
+      s+='<Placemark><name>'+_kesc(f.name)+'</name>'+(f.desc?'<description>'+_kesc(f.desc)+'</description>':'')+'<styleUrl>'+id+'</styleUrl>';
+      if(f.type==='polygon'){ s+='<Polygon>'; f.rings.forEach((r,i)=>{ const tag=i===0?'outerBoundaryIs':'innerBoundaryIs';
+        const ring=(r.length&&(r[0][0]!==r[r.length-1][0]||r[0][1]!==r[r.length-1][1]))?r.concat([r[0]]):r;
+        s+='<'+tag+'><LinearRing><coordinates>'+_kcoords(ring)+'</coordinates></LinearRing></'+tag+'>'; }); s+='</Polygon>'; }
+      else if(f.type==='line') s+='<LineString><coordinates>'+_kcoords(f.pts)+'</coordinates></LineString>';
+      else s+='<Point><coordinates>'+f.pt[1]+','+f.pt[0]+',0</coordinates></Point>';
+      s+='</Placemark>\n'; });
+    s+='</Folder>\n'; });
+  return s+'</Document>\n</kml>\n';
+}
+/* ----- adaptadores p/ o viewer ----- */
+const CAMPOS_NOME=['NOME','Nome','nome','NAME','Name','name','TALHAO','Talhao','talhao','GLEBA','Gleba','CAMPO','Campo','FAZENDA','Fazenda','DESCRICAO','Descricao','ID','Id','id'];
+function nomeDeAttrs(attrs,idx){
+  if(attrs){ for(const c of CAMPOS_NOME) if(attrs[c]!=null&&String(attrs[c]).trim()) return String(attrs[c]).trim();
+    for(const k in attrs){ const v=String(attrs[k]||'').trim(); if(v) return v; } }
+  return 'Feição '+(idx+1);
+}
+function descDeAttrs(attrs){ if(!attrs) return ''; return Object.keys(attrs).filter(k=>String(attrs[k]).trim()).map(k=>k+': '+attrs[k]).join(' · ').slice(0,300); }
+function importarFeatsShp(res,fileName){
+  let n=0;
+  res.feats.forEach((ft,i)=>{
+    const nome=nomeDeAttrs(ft.attrs,i),desc=descDeAttrs(ft.attrs); let g;
+    if(ft.type==='point') g={type:'point',pt:L.latLng(ft.coords[0][0],ft.coords[0][1])};
+    else if(ft.type==='line') g={type:'line',pts:ft.coords[0].map(c=>L.latLng(c[0],c[1]))};
+    else g={type:'polygon',ring:ft.coords[0].map(c=>L.latLng(c[0],c[1])),holes:ft.coords.slice(1).map(an=>an.map(c=>L.latLng(c[0],c[1])))};
+    addFeature(g,nome,desc,{},fileName,ft.attrs); n++;
+  });
+  return n;
+}
+function featsExportDe(lista){
+  return lista.map(f=>{
+    const o={type:f.type,name:f.name,desc:f.desc||'',color:f.color,area:f.area,perim:f.perim,fileName:f.fileName};
+    if(f.type==='polygon'){ o.rings=[f.geom.ring,...(f.geom.holes||[])].map(r=>r.map(p=>[p.lat,p.lng])); }
+    else if(f.type==='line') o.pts=f.geom.pts.map(p=>[p.lat,p.lng]);
+    else o.pt=[f.geom.pt.lat,f.geom.pt.lng];
+    return o;
+  });
+}
+async function empacotarShpZip(base, shpBuf, dbfBuf, prjTxt){
+  const zip=new JSZip();
+  zip.file(base+'.shp', shpBuf);
+  if(dbfBuf) zip.file(base+'.dbf', dbfBuf);
+  if(prjTxt) zip.file(base+'.prj', prjTxt);
+  return await zip.generateAsync({type:'blob'});
+}
+/* ----- entrega do arquivo (Web Share no iPhone, senão download) ----- */
+async function baixar(blob, nome){
+  try{
+    const file=new File([blob], nome, {type:blob.type||'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:nome}); return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+/* ----- Exportação de Feição Única (por ID) ----- */
+async function exportarFeatUnica(id, fmt){
+  const f = features.find(x => x.id === id);
+  if(!f){ toast('Elemento não encontrado.'); return; }
+  
+  const baseNome = f.name.replace(/[^\w.-]+/g,'_') || 'elemento';
+  loading(true, 'Gerando '+fmt.toUpperCase()+'…');
+  try {
+    const exp = featsExportDe([f]);
+    if(fmt === 'kml' || fmt === 'kmz'){
+      const grupos = [{nome: f.fileName || 'Camada', feats: exp}];
+      const kml = featsParaKML(grupos, baseNome);
+      if(fmt === 'kml') {
+        await baixar(new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}), baseNome+'.kml');
+      } else {
+        const zip = new JSZip();
+        zip.file('doc.kml', kml);
+        await baixar(await zip.generateAsync({type:'blob'}), baseNome+'.kmz');
+      }
+    } else { // shp
+      const s = escreverShapefile(exp, f.type);
+      const zip = new JSZip();
+      zip.file(baseNome+'.shp', s.shp);
+      zip.file(baseNome+'.shx', s.shx);
+      zip.file(baseNome+'.dbf', s.dbf);
+      zip.file(baseNome+'.prj', s.prj);
+      await baixar(await zip.generateAsync({type:'blob', compression:'DEFLATE'}), baseNome+'_shp.zip');
+    }
+  } catch(e) {
+    toast('Erro ao exportar: ' + e.message);
+  } finally {
+    loading(false);
+  }
+}
+
+/* ----- UI de exportação ----- */
+function camadasDisponiveis(){ return [...new Set(features.map(f=>f.fileName))]; }
+function featuresDaCamada(sel){ return sel==='*'?features.slice():features.filter(f=>f.fileName===sel); }
+function montarExportSelect(){
+  const wrap=$('exportWrap'); if(!wrap) return;
+  const cams=camadasDisponiveis();
+  if(!cams.length){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  const sel=$('expLayer'), atual=sel.value;
+  sel.innerHTML='<option value="*">Todas as camadas ('+features.length+')</option>'+
+    cams.map(c=>{ const n=features.filter(f=>f.fileName===c).length; return '<option value="'+escapeHtml(c).replace(/"/g,'&quot;')+'">'+escapeHtml(c)+' ('+n+')</option>'; }).join('');
+  if(atual && [...sel.options].some(o=>o.value===atual)) sel.value=atual;
+}
+async function exportarCamada(fmt){
+  const sel=$('expLayer').value;
+  const lista=featuresDaCamada(sel);
+  if(!lista.length){ toast('Nada para exportar nessa camada.'); return; }
+  const baseNome=(sel==='*'?'camadas':_baseName(sel)).replace(/[^\w.-]+/g,'_')||'camada';
+  loading(true,'Gerando '+fmt.toUpperCase()+'…');
+  try{
+    if(fmt==='kml'||fmt==='kmz'){
+      const porArq={}; lista.forEach(f=>{ (porArq[f.fileName]=porArq[f.fileName]||[]).push(f); });
+      const grupos=Object.keys(porArq).map(nm=>({nome:nm, feats:featsExportDe(porArq[nm])}));
+      const kml=featsParaKML(grupos, baseNome);
+      if(fmt==='kml') await baixar(new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}), baseNome+'.kml');
+      else{ const zip=new JSZip(); zip.file('doc.kml', kml); await baixar(await zip.generateAsync({type:'blob'}), baseNome+'.kmz'); }
+    } else {
+      const exp=featsExportDe(lista);
+      const porTipo={point:[],line:[],polygon:[]}; exp.forEach(f=>porTipo[f.type].push(f));
+      const zip=new JSZip(), suf={point:'_pontos',line:'_linhas',polygon:'_poligonos'}; let algum=false;
+      for(const tp of ['point','line','polygon']){
+        if(!porTipo[tp].length) continue; algum=true;
+        const s=escreverShapefile(porTipo[tp], tp), nm=baseNome+suf[tp];
+        zip.file(nm+'.shp', s.shp); zip.file(nm+'.shx', s.shx); zip.file(nm+'.dbf', s.dbf); zip.file(nm+'.prj', s.prj);
+      }
+      if(!algum){ toast('Nada para exportar.'); return; }
+      await baixar(await zip.generateAsync({type:'blob',compression:'DEFLATE'}), baseNome+'_shp.zip');
+    }
+  }catch(e){ toast('Erro ao exportar: '+e.message); }
+  finally{ loading(false); }
+}
+document.getElementById('expBtns').addEventListener('click', e=>{
+  const b=e.target.closest('.expBtn'); if(!b) return; exportarCamada(b.dataset.fmt);
+});
+
+/* =========================================================================
+   GeoTIFF: overlay de raster (bibliotecas carregadas sob demanda via CDN)
+   ========================================================================= */
+const RASTERS={};   // name -> {layer, visible, opacity}
+let _rasterLibs=null;
+function carregarLibsRaster(){
+  if(_rasterLibs) return _rasterLibs;
+  const inject=src=>new Promise((res,rej)=>{ if([...document.scripts].some(s=>s.src===src)) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('CDN')); document.head.appendChild(s); });
+  _rasterLibs=(async()=>{
+    await inject('https://unpkg.com/proj4@2.9.0/dist/proj4.js');
+    await inject('https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js');
+    await inject('https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js');
+    if(typeof parseGeoraster==='undefined'||typeof GeoRasterLayer==='undefined') throw new Error('libs raster');
+  })().catch(e=>{ _rasterLibs=null; throw e; });
+  return _rasterLibs;
+}
+async function importarGeoTIFF(name, buf){
+  try{ await carregarLibsRaster(); }
+  catch(e){ toast('GeoTIFF precisa de internet na 1ª vez pra baixar o leitor. Conecte e importe de novo.'); throw new Error(name+': leitor de GeoTIFF indisponível'); }
+  const georaster=await parseGeoraster(buf.slice(0));
+  const layer=new GeoRasterLayer({georaster, opacity:1, resolution:256});
+  layer.addTo(map);
+  RASTERS[name]={layer, visible:true, opacity:1};
+  await dbPut({name, data:buf, kind:'raster', savedAt:Date.now()}).catch(()=>{});
+  try{ map.fitBounds(layer.getBounds()); }catch(e){}
+  renderSavedChips();
+  return {n:0, raster:true};
+}
+function removeRaster(name, silent){
+  const r=RASTERS[name]; if(!r) return;
+  if(r.layer) map.removeLayer(r.layer);
+  delete RASTERS[name];
+  if(!silent){ dbDel(name).catch(()=>{}); renderSavedChips(); }
+}
+
 // ---------- Leitura de arquivos ----------
 const dz=$('dropzone'), fi=$('fileInput');
 dz.addEventListener('click',()=>fi.click());
@@ -1593,39 +2392,92 @@ fi.addEventListener('change',e=>handleFiles(e.target.files));
   document.body.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop')handleFiles(e.dataTransfer.files);dz.classList.remove('drag');});
 });
 
-// processa um arquivo a partir do ArrayBuffer (usado na importação e na restauração)
+// processa um arquivo a partir do ArrayBuffer (usado na importação e na restauração).
+// Decide pelo CONTEÚDO (assinatura de bytes), não só pela extensão.
+// Retorna {n: feições vetoriais adicionadas, raster: bool}
 async function processBuffer(name, buf){
-  const nm=name.toLowerCase();
-  let added=0;
-  if(nm.endsWith('.kmz')){
+  const u8=new Uint8Array(buf);
+  // ZIP (PK): pode ser shapefile empacotado OU KMZ
+  if(_magicZip(u8)){
     const zip=await JSZip.loadAsync(buf);
-    // pega todos os .kml do pacote (normalmente doc.kml)
-    const kmls=Object.keys(zip.files).filter(k=>k.toLowerCase().endsWith('.kml')&&!zip.files[k].dir);
-    if(!kmls.length) throw new Error('Nenhum .kml dentro de '+name);
-    for(const k of kmls){
-      added+=parseKmlText(await zip.files[k].async('string'), name);
+    const nomes=Object.keys(zip.files).filter(k=>!zip.files[k].dir);
+    const shps=nomes.filter(k=>k.toLowerCase().endsWith('.shp'));
+    if(shps.length){
+      let add=0;
+      for(const sp of shps){
+        const base=sp.replace(/\.[^.]+$/,'');
+        const dbfK=nomes.find(k=>k.toLowerCase()===(base+'.dbf').toLowerCase());
+        const prjK=nomes.find(k=>k.toLowerCase()===(base+'.prj').toLowerCase());
+        const shpBuf=await zip.files[sp].async('arraybuffer');
+        const dbfBuf=dbfK?await zip.files[dbfK].async('arraybuffer'):null;
+        const prjTxt=prjK?await zip.files[prjK].async('string'):null;
+        add+=importarFeatsShp(lerShapefile(shpBuf,dbfBuf,prjTxt), name);
+      }
+      return {n:add, raster:false};
     }
-  } else if(nm.endsWith('.kml')){
-    added+=parseKmlText(new TextDecoder('utf-8').decode(buf), name);
-  } else {
-    throw new Error(name+': formato não suportado');
+    const kmls=nomes.filter(k=>k.toLowerCase().endsWith('.kml'));
+    if(kmls.length){ let a=0; for(const k of kmls) a+=parseKmlText(await zip.files[k].async('string'), name); return {n:a, raster:false}; }
+    throw new Error('ZIP sem .shp nem .kml: '+name);
   }
-  return added;
+  // TIFF / GeoTIFF
+  if(_magicTiff(u8)) return await importarGeoTIFF(name, buf);
+  // KML (texto)
+  const cab=new TextDecoder('utf-8').decode(u8.subarray(0,600)).toLowerCase();
+  if(cab.includes('<kml')||name.toLowerCase().endsWith('.kml'))
+    return {n:parseKmlText(new TextDecoder('utf-8').decode(u8), name), raster:false};
+  // .shp solto (sem dbf/prj) — tenta mesmo assim
+  if(name.toLowerCase().endsWith('.shp'))
+    return {n:importarFeatsShp(lerShapefile(buf,null,null), name), raster:false};
+  throw new Error(name+': formato não suportado');
 }
 
 async function handleFiles(fileList){
   if(!fileList||!fileList.length) return;
   loading(true,'Lendo arquivo…');
-  let total=0, errs=[];
+  const arr=[...fileList];
+  let total=0, rasterOk=0, errs=[];
+  // 1) agrupa partes soltas de shapefile por nome-base (.shp com seus .dbf/.prj)
+  const grupos={}, soltos=[];
+  for(const f of arr){
+    const e=_ext(f.name);
+    if(e==='shp'||e==='dbf'||e==='prj'||e==='shx'||e==='cpg'){
+      const key=_baseName(f.name).toLowerCase();
+      (grupos[key]=grupos[key]||{base:_baseName(f.name)})[e]=f;
+    } else soltos.push(f);
+  }
   try{
-    for(const file of fileList){
+    // 1a) grupos de shapefile solto
+    for(const key in grupos){
+      const g=grupos[key];
+      if(!g.shp) continue; // .dbf/.prj sem .shp: ignora
+      try{
+        const nome=g.base+'.shp';
+        loading(true,'Lendo '+nome+'…');
+        removeFileFeatures(nome);
+        const shpBuf=await g.shp.arrayBuffer();
+        const dbfBuf=g.dbf?await g.dbf.arrayBuffer():null;
+        const prjTxt=g.prj?await g.prj.text():null;
+        const add=importarFeatsShp(lerShapefile(shpBuf,dbfBuf,prjTxt), nome);
+        total+=add;
+        if(add>0){
+          const blob=await empacotarShpZip(g.base, shpBuf, dbfBuf, prjTxt);
+          await dbPut({name:nome, data:await blob.arrayBuffer(), kind:'shp', savedAt:Date.now()}).catch(()=>{});
+        }
+      }catch(err){ errs.push(err.message); }
+    }
+    // 1b) arquivos únicos (kml/kmz/zip/tif/ecw)
+    for(const file of soltos){
+      const e=_ext(file.name);
+      if(e==='ecw'){ errs.push('ECW não abre no navegador — converta para GeoTIFF antes (QGIS: Exportar › Salvar como › GeoTIFF).'); continue; }
       try{
         loading(true,'Lendo '+file.name+'…');
         const buf=await file.arrayBuffer();
-        removeFileFeatures(file.name); // reimportar substitui a versão anterior
-        const added=await processBuffer(file.name, buf);
-        total+=added;
-        if(added>0) await dbPut({name:file.name, data:buf, savedAt:Date.now()}).catch(()=>{});
+        removeFileFeatures(file.name);
+        removeRaster(file.name, true);
+        const res=await processBuffer(file.name, buf);
+        total+=res.n;
+        if(res.raster) rasterOk++;
+        else if(res.n>0) await dbPut({name:file.name, data:buf, savedAt:Date.now()}).catch(()=>{});
       }catch(err){ errs.push(err.message); }
     }
   } finally {
@@ -1635,7 +2487,7 @@ async function handleFiles(fileList){
   renderSavedChips();
   if(total>0) fitAll();
   if(errs.length) toast('⚠ '+errs.join(' · '));
-  else if(total===0) toast('Nenhuma geometria encontrada nos arquivos.');
+  else if(total===0 && !rasterOk) toast('Nenhuma geometria encontrada nos arquivos.');
 }
 
 // ---------- Persistência local (IndexedDB) ----------
@@ -1743,6 +2595,7 @@ async function renderSavedChips(){
       Object.assign(prefs, pr.data);
       if(!prefs.files) prefs.files={};
       if(!prefs.colors) prefs.colors={};
+      if(!prefs.notes) prefs.notes={};
       labelsOn = prefs.labelsOn!==false;
       fillOn   = prefs.fillOn!==false;
       pointsOn = prefs.pointsOn!==false;
@@ -1774,6 +2627,186 @@ async function renderSavedChips(){
     console.warn('IndexedDB indisponível:',e);
   }
 })();
+
+/* =========================================================================
+   Tabela de Atributos: Edição Interativa
+   ========================================================================= */
+let attrCols = [];
+let attrRowsData = []; // [{f, attrs}]
+let sortCol = null;
+let sortAsc = true;
+
+function abrirTabelaAtributos(singleId){
+  const modal = $('attrModal');
+  if(!modal) return;
+  
+  let targetFeats = features.slice();
+  if(singleId !== undefined){
+    const found = features.find(x => x.id === singleId);
+    if(found) targetFeats = [found];
+  } else {
+    const sel = $('expLayer') ? $('expLayer').value : '*';
+    if(sel && sel !== '*') targetFeats = features.filter(f => f.fileName === sel);
+  }
+  
+  if(!targetFeats.length){ toast('Nenhuma feição selecionada.'); return; }
+  
+  // Coleta colunas que possuem pelo menos algum dado preenchido nas feições
+  const allCols = new Set(['NOME']);
+  targetFeats.forEach(f => {
+    if(f.attrs) Object.keys(f.attrs).forEach(k => allCols.add(k));
+  });
+  
+  // Filtra colunas: mantém se for 'NOME' ou se tiver pelo menos 1 valor não-vazio
+  attrCols = Array.from(allCols).filter(col => {
+    if(col === 'NOME') return true;
+    return targetFeats.some(f => f.attrs && f.attrs[col] !== undefined && String(f.attrs[col]).trim() !== '');
+  });
+  
+  attrRowsData = targetFeats.map(f => {
+    const row = Object.assign({}, f.attrs || {});
+    row['NOME'] = f.name;
+    return { feat: f, attrs: row };
+  });
+  
+  sortCol = null;
+  sortAsc = true;
+  
+  renderTabelaAtributos();
+  $('attrCountLabel').textContent = targetFeats.length + ' feição(ões)';
+  modal.classList.add('open');
+}
+
+function ordenarColuna(col){
+  if(sortCol === col){
+    sortAsc = !sortAsc;
+  } else {
+    sortCol = col;
+    sortAsc = true;
+  }
+  
+  attrRowsData.sort((a, b) => {
+    let v1 = a.attrs[col] !== undefined ? String(a.attrs[col]).trim() : '';
+    let v2 = b.attrs[col] !== undefined ? String(b.attrs[col]).trim() : '';
+    
+    let n1 = parseFloat(v1.replace(',', '.'));
+    let n2 = parseFloat(v2.replace(',', '.'));
+    
+    let res = 0;
+    if(!isNaN(n1) && !isNaN(n2)){
+      res = n1 - n2;
+    } else {
+      res = v1.localeCompare(v2, undefined, {numeric: true, sensitivity: 'base'});
+    }
+    
+    return sortAsc ? res : -res;
+  });
+  
+  renderTabelaAtributos();
+}
+
+function renderTabelaAtributos(){
+  const thead = $('attrThead');
+  const tbody = $('attrTbody');
+  if(!thead || !tbody) return;
+  
+  // Render Header com ordenação clicável
+  thead.innerHTML = '<tr><th style="width:40px;text-align:center;">#</th>' +
+    attrCols.map(c => {
+      let icon = ' ⇅';
+      if(sortCol === c) icon = sortAsc ? ' ▲' : ' ▼';
+      return `<th style="cursor:pointer;user-select:none;" onclick="ordenarColuna('${escapeHtml(c)}')">${escapeHtml(c)}<span style="font-size:10px;color:var(--accent);">${icon}</span></th>`;
+    }).join('') + '</tr>';
+    
+  // Render Body
+  tbody.innerHTML = attrRowsData.map((rowObj, rIdx) => {
+    const cells = attrCols.map(col => {
+      const val = rowObj.attrs[col] !== undefined ? rowObj.attrs[col] : '';
+      return `<td><input data-row="${rIdx}" data-col="${escapeHtml(col)}" value="${escapeHtml(String(val))}"></td>`;
+    }).join('');
+    return `<tr><td style="text-align:center;color:var(--muted);">${rIdx+1}</td>${cells}</tr>`;
+  }).join('');
+}
+
+function adicionarColunaAtributo(){
+  const nome = prompt('Digite o nome da nova coluna (ex: PROPRIETARIO, SITUACAO):');
+  if(!nome) return;
+  const colName = nome.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10);
+  if(!colName){ toast('Nome inválido.'); return; }
+  if(attrCols.includes(colName)){ toast('Coluna já existe.'); return; }
+  
+  attrCols.push(colName);
+  attrRowsData.forEach(r => r.attrs[colName] = '');
+  renderTabelaAtributos();
+}
+
+function removerColunaAtributo(){
+  if(attrCols.length <= 1){ toast('Não é possível remover todas as colunas.'); return; }
+  const colName = prompt('Digite o nome da coluna a remover:\n(' + attrCols.join(', ') + ')');
+  if(!colName) return;
+  const target = colName.trim().toUpperCase();
+  const idx = attrCols.indexOf(target);
+  if(idx < 0){ toast('Coluna não encontrada.'); return; }
+  
+  attrCols.splice(idx, 1);
+  attrRowsData.forEach(r => delete r.attrs[target]);
+  renderTabelaAtributos();
+}
+
+function salvarTabelaAtributos(){
+  const inputs = document.querySelectorAll('#attrTbody input');
+  inputs.forEach(inp => {
+    const rIdx = parseInt(inp.dataset.row);
+    const col = inp.dataset.col;
+    if(attrRowsData[rIdx]){
+      attrRowsData[rIdx].attrs[col] = inp.value.trim();
+    }
+  });
+  
+  // Atualiza feições com novos atributos
+  attrRowsData.forEach(r => {
+    r.feat.attrs = Object.assign({}, r.attrs);
+    if(r.attrs['NOME'] && r.attrs['NOME'] !== r.feat.name){
+      r.feat.name = r.attrs['NOME'];
+      const nmEl = r.feat.el ? r.feat.el.querySelector('.nm') : null;
+      if(nmEl) nmEl.textContent = r.feat.name;
+    }
+  });
+  
+  fecharTabelaAtributos();
+  toast('Atributos atualizados com sucesso!', 2500);
+}
+
+function fecharTabelaAtributos(){
+  const modal = $('attrModal');
+  if(modal) modal.classList.remove('open');
+}
+
 </script>
+
+<div id="attrModal">
+  <div class="attr-card">
+    <div class="attr-header">
+      <h2>📋 Tabela de Atributos (<span id="attrLayerName">Tudo</span>)</h2>
+      <button class="btn-toggle-sidebar" id="closeAttrBtn" onclick="fecharTabelaAtributos()" title="Fechar">✕</button>
+    </div>
+    <div class="attr-toolbar">
+      <button onclick="adicionarColunaAtributo()">+ Nova Coluna</button>
+      <button onclick="removerColunaAtributo()">- Remover Coluna</button>
+      <span style="font-size:12px;color:var(--muted);margin-left:auto;" id="attrCountLabel">0 feições</span>
+    </div>
+    <div class="attr-body">
+      <table class="attr-table" id="attrTable">
+        <thead id="attrThead"></thead>
+        <tbody id="attrTbody"></tbody>
+      </table>
+    </div>
+    <div class="attr-footer">
+      <button onclick="fecharTabelaAtributos()">Cancelar</button>
+      <button class="primary" onclick="salvarTabelaAtributos()">Salvar Alterações</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
