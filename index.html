@@ -5,318 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Visualizador KMZ / KML</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js">
-/* =========================================================================
-   Tabela de Atributos: Edição Interativa
-   ========================================================================= */
-let attrCols = [];
-let attrRowsData = []; // [{f, attrs}]
-let sortCol = null;
-let sortAsc = true;
-
-function abrirTabelaAtributos(singleId){
-  const modal = $('attrModal');
-  if(!modal) return;
-  
-  let targetFeats = features.slice();
-  if(singleId !== undefined){
-    const found = features.find(x => x.id === singleId);
-    if(found) targetFeats = [found];
-  } else {
-    const sel = $('expLayer') ? $('expLayer').value : '*';
-    if(sel && sel !== '*') targetFeats = features.filter(f => f.fileName === sel);
-  }
-  
-  if(!targetFeats.length){ toast('Nenhuma feição selecionada.'); return; }
-  
-  // Coleta colunas que possuem pelo menos algum dado preenchido nas feições
-  const allCols = new Set(['NOME']);
-  targetFeats.forEach(f => {
-    if(f.attrs) Object.keys(f.attrs).forEach(k => allCols.add(k));
-  });
-  
-  // Filtra colunas: mantém se for 'NOME' ou se tiver pelo menos 1 valor não-vazio
-  attrCols = Array.from(allCols).filter(col => {
-    if(col === 'NOME') return true;
-    return targetFeats.some(f => f.attrs && f.attrs[col] !== undefined && String(f.attrs[col]).trim() !== '');
-  });
-  
-  attrRowsData = targetFeats.map(f => {
-    const row = Object.assign({}, f.attrs || {});
-    row['NOME'] = f.name;
-    return { feat: f, attrs: row };
-  });
-  
-  sortCol = null;
-  sortAsc = true;
-  
-  renderTabelaAtributos();
-  $('attrCountLabel').textContent = targetFeats.length + ' feição(ões)';
-  modal.classList.add('open');
-}
-
-function ordenarColuna(col){
-  if(sortCol === col){
-    sortAsc = !sortAsc;
-  } else {
-    sortCol = col;
-    sortAsc = true;
-  }
-  
-  attrRowsData.sort((a, b) => {
-    let v1 = a.attrs[col] !== undefined ? String(a.attrs[col]).trim() : '';
-    let v2 = b.attrs[col] !== undefined ? String(b.attrs[col]).trim() : '';
-    
-    let n1 = parseFloat(v1.replace(',', '.'));
-    let n2 = parseFloat(v2.replace(',', '.'));
-    
-    let res = 0;
-    if(!isNaN(n1) && !isNaN(n2)){
-      res = n1 - n2;
-    } else {
-      res = v1.localeCompare(v2, undefined, {numeric: true, sensitivity: 'base'});
-    }
-    
-    return sortAsc ? res : -res;
-  });
-  
-  renderTabelaAtributos();
-}
-
-function renderTabelaAtributos(){
-  const thead = $('attrThead');
-  const tbody = $('attrTbody');
-  if(!thead || !tbody) return;
-  
-  // Render Header com ordenação clicável
-  thead.innerHTML = '<tr><th style="width:40px;text-align:center;">#</th>' +
-    attrCols.map(c => {
-      let icon = ' ⇅';
-      if(sortCol === c) icon = sortAsc ? ' ▲' : ' ▼';
-      return `<th style="cursor:pointer;user-select:none;" onclick="ordenarColuna('${escapeHtml(c)}')">${escapeHtml(c)}<span style="font-size:10px;color:var(--accent);">${icon}</span></th>`;
-    }).join('') + '</tr>';
-    
-  // Render Body
-  tbody.innerHTML = attrRowsData.map((rowObj, rIdx) => {
-    const cells = attrCols.map(col => {
-      const val = rowObj.attrs[col] !== undefined ? rowObj.attrs[col] : '';
-      return `<td><input data-row="${rIdx}" data-col="${escapeHtml(col)}" value="${escapeHtml(String(val))}"></td>`;
-    }).join('');
-    return `<tr><td style="text-align:center;color:var(--muted);">${rIdx+1}</td>${cells}</tr>`;
-  }).join('');
-}
-
-function adicionarColunaAtributo(){
-  const nome = prompt('Digite o nome da nova coluna (ex: PROPRIETARIO, SITUACAO):');
-  if(!nome) return;
-  const colName = nome.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10);
-  if(!colName){ toast('Nome inválido.'); return; }
-  if(attrCols.includes(colName)){ toast('Coluna já existe.'); return; }
-  
-  attrCols.push(colName);
-  attrRowsData.forEach(r => r.attrs[colName] = '');
-  renderTabelaAtributos();
-}
-
-function removerColunaAtributo(){
-  if(attrCols.length <= 1){ toast('Não é possível remover todas as colunas.'); return; }
-  const colName = prompt('Digite o nome da coluna a remover:\n(' + attrCols.join(', ') + ')');
-  if(!colName) return;
-  const target = colName.trim().toUpperCase();
-  const idx = attrCols.indexOf(target);
-  if(idx < 0){ toast('Coluna não encontrada.'); return; }
-  
-  attrCols.splice(idx, 1);
-  attrRowsData.forEach(r => delete r.attrs[target]);
-  renderTabelaAtributos();
-}
-
-function salvarTabelaAtributos(){
-  const inputs = document.querySelectorAll('#attrTbody input');
-  inputs.forEach(inp => {
-    const rIdx = parseInt(inp.dataset.row);
-    const col = inp.dataset.col;
-    if(attrRowsData[rIdx]){
-      attrRowsData[rIdx].attrs[col] = inp.value.trim();
-    }
-  });
-  
-  // Atualiza feições com novos atributos
-  attrRowsData.forEach(r => {
-    r.feat.attrs = Object.assign({}, r.attrs);
-    if(r.attrs['NOME'] && r.attrs['NOME'] !== r.feat.name){
-      r.feat.name = r.attrs['NOME'];
-      const nmEl = r.feat.el ? r.feat.el.querySelector('.nm') : null;
-      if(nmEl) nmEl.textContent = r.feat.name;
-    }
-  });
-  
-  fecharTabelaAtributos();
-  toast('Atributos atualizados com sucesso!', 2500);
-}
-
-function fecharTabelaAtributos(){
-  const modal = $('attrModal');
-  if(modal) modal.classList.remove('open');
-}
-
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
-/* =========================================================================
-   Tabela de Atributos: Edição Interativa
-   ========================================================================= */
-let attrCols = [];
-let attrRowsData = []; // [{f, attrs}]
-let sortCol = null;
-let sortAsc = true;
-
-function abrirTabelaAtributos(singleId){
-  const modal = $('attrModal');
-  if(!modal) return;
-  
-  let targetFeats = features.slice();
-  if(singleId !== undefined){
-    const found = features.find(x => x.id === singleId);
-    if(found) targetFeats = [found];
-  } else {
-    const sel = $('expLayer') ? $('expLayer').value : '*';
-    if(sel && sel !== '*') targetFeats = features.filter(f => f.fileName === sel);
-  }
-  
-  if(!targetFeats.length){ toast('Nenhuma feição selecionada.'); return; }
-  
-  // Coleta colunas que possuem pelo menos algum dado preenchido nas feições
-  const allCols = new Set(['NOME']);
-  targetFeats.forEach(f => {
-    if(f.attrs) Object.keys(f.attrs).forEach(k => allCols.add(k));
-  });
-  
-  // Filtra colunas: mantém se for 'NOME' ou se tiver pelo menos 1 valor não-vazio
-  attrCols = Array.from(allCols).filter(col => {
-    if(col === 'NOME') return true;
-    return targetFeats.some(f => f.attrs && f.attrs[col] !== undefined && String(f.attrs[col]).trim() !== '');
-  });
-  
-  attrRowsData = targetFeats.map(f => {
-    const row = Object.assign({}, f.attrs || {});
-    row['NOME'] = f.name;
-    return { feat: f, attrs: row };
-  });
-  
-  sortCol = null;
-  sortAsc = true;
-  
-  renderTabelaAtributos();
-  $('attrCountLabel').textContent = targetFeats.length + ' feição(ões)';
-  modal.classList.add('open');
-}
-
-function ordenarColuna(col){
-  if(sortCol === col){
-    sortAsc = !sortAsc;
-  } else {
-    sortCol = col;
-    sortAsc = true;
-  }
-  
-  attrRowsData.sort((a, b) => {
-    let v1 = a.attrs[col] !== undefined ? String(a.attrs[col]).trim() : '';
-    let v2 = b.attrs[col] !== undefined ? String(b.attrs[col]).trim() : '';
-    
-    let n1 = parseFloat(v1.replace(',', '.'));
-    let n2 = parseFloat(v2.replace(',', '.'));
-    
-    let res = 0;
-    if(!isNaN(n1) && !isNaN(n2)){
-      res = n1 - n2;
-    } else {
-      res = v1.localeCompare(v2, undefined, {numeric: true, sensitivity: 'base'});
-    }
-    
-    return sortAsc ? res : -res;
-  });
-  
-  renderTabelaAtributos();
-}
-
-function renderTabelaAtributos(){
-  const thead = $('attrThead');
-  const tbody = $('attrTbody');
-  if(!thead || !tbody) return;
-  
-  // Render Header com ordenação clicável
-  thead.innerHTML = '<tr><th style="width:40px;text-align:center;">#</th>' +
-    attrCols.map(c => {
-      let icon = ' ⇅';
-      if(sortCol === c) icon = sortAsc ? ' ▲' : ' ▼';
-      return `<th style="cursor:pointer;user-select:none;" onclick="ordenarColuna('${escapeHtml(c)}')">${escapeHtml(c)}<span style="font-size:10px;color:var(--accent);">${icon}</span></th>`;
-    }).join('') + '</tr>';
-    
-  // Render Body
-  tbody.innerHTML = attrRowsData.map((rowObj, rIdx) => {
-    const cells = attrCols.map(col => {
-      const val = rowObj.attrs[col] !== undefined ? rowObj.attrs[col] : '';
-      return `<td><input data-row="${rIdx}" data-col="${escapeHtml(col)}" value="${escapeHtml(String(val))}"></td>`;
-    }).join('');
-    return `<tr><td style="text-align:center;color:var(--muted);">${rIdx+1}</td>${cells}</tr>`;
-  }).join('');
-}
-
-function adicionarColunaAtributo(){
-  const nome = prompt('Digite o nome da nova coluna (ex: PROPRIETARIO, SITUACAO):');
-  if(!nome) return;
-  const colName = nome.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10);
-  if(!colName){ toast('Nome inválido.'); return; }
-  if(attrCols.includes(colName)){ toast('Coluna já existe.'); return; }
-  
-  attrCols.push(colName);
-  attrRowsData.forEach(r => r.attrs[colName] = '');
-  renderTabelaAtributos();
-}
-
-function removerColunaAtributo(){
-  if(attrCols.length <= 1){ toast('Não é possível remover todas as colunas.'); return; }
-  const colName = prompt('Digite o nome da coluna a remover:\n(' + attrCols.join(', ') + ')');
-  if(!colName) return;
-  const target = colName.trim().toUpperCase();
-  const idx = attrCols.indexOf(target);
-  if(idx < 0){ toast('Coluna não encontrada.'); return; }
-  
-  attrCols.splice(idx, 1);
-  attrRowsData.forEach(r => delete r.attrs[target]);
-  renderTabelaAtributos();
-}
-
-function salvarTabelaAtributos(){
-  const inputs = document.querySelectorAll('#attrTbody input');
-  inputs.forEach(inp => {
-    const rIdx = parseInt(inp.dataset.row);
-    const col = inp.dataset.col;
-    if(attrRowsData[rIdx]){
-      attrRowsData[rIdx].attrs[col] = inp.value.trim();
-    }
-  });
-  
-  // Atualiza feições com novos atributos
-  attrRowsData.forEach(r => {
-    r.feat.attrs = Object.assign({}, r.attrs);
-    if(r.attrs['NOME'] && r.attrs['NOME'] !== r.feat.name){
-      r.feat.name = r.attrs['NOME'];
-      const nmEl = r.feat.el ? r.feat.el.querySelector('.nm') : null;
-      if(nmEl) nmEl.textContent = r.feat.name;
-    }
-  });
-  
-  fecharTabelaAtributos();
-  toast('Atributos atualizados com sucesso!', 2500);
-}
-
-function fecharTabelaAtributos(){
-  const modal = $('attrModal');
-  if(modal) modal.classList.remove('open');
-}
-
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -870,6 +560,7 @@ body.sidebar-collapsed #sidebar {
       <button class="expBtn" data-fmt="kmz">KMZ</button>
       <button class="expBtn" data-fmt="shp">Shapefile</button>
     </div>
+    <button class="expBtn" data-fmt="maps" id="expMapsBtn" style="width:100%;margin-top:6px;background:var(--accent);color:var(--accent-ink);border:none;font-weight:700">🌐 Abrir no Google Maps</button>
     <div class="expHint">Gera o arquivo pronto pra compartilhar/enviar.</div>
   </div>
 
@@ -1325,10 +1016,11 @@ function addFeature(g, name, desc, st, fileName, attrs){
         `<textarea id="popNote_${id}" placeholder="Digite uma observação…" style="width:100%;height:54px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:6px;font-size:11.5px;font-family:inherit;resize:vertical;outline:none;" oninput="salvarNota(${id}, this.value, false)" onblur="salvarNota(${id}, this.value, false)" onchange="salvarNota(${id}, this.value, false)">${escapeHtml(note)}</textarea>`+
         `<button style="margin-top:4px;width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:5px;padding:5px;font-size:11px;font-weight:700;cursor:pointer" onclick="salvarNotaComAviso(${id})">💾 Salvar Observação</button>`+
       `</div>`+
-      `<div style="display:flex;gap:4px;margin-top:8px;">`+
-        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kmz')">KMZ</button>`+
-        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kml')">KML</button>`+
-        `<button style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'shp')">SHP</button>`+
+      `<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">`+
+        `<button style="flex:1;min-width:48px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kmz')">KMZ</button>`+
+        `<button style="flex:1;min-width:48px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kml')">KML</button>`+
+        `<button style="flex:1;min-width:48px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'shp')">SHP</button>`+
+        `<button style="flex:1;min-width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:4px;padding:5px;font-size:11px;font-weight:700;cursor:pointer" onclick="linkMapsFeat(${id})">🌐 Abrir no Google Maps</button>`+
       `</div>`+
       `</div>`;
   });
@@ -1563,6 +1255,7 @@ function updateSummary(){
   $('searchWrap').style.display='block';
   $('lblSizeWrap').style.display='block';
   if($('attrWrap')) $('attrWrap').style.display='block';
+  montarExportSelect();
 }
 
 // filtro
@@ -1798,8 +1491,12 @@ function addDrawingFeature(d){
   const f=features[features.length-1];
   f.drawId=d.id;
   const pop=f.layer.getPopup();
-  pop.setContent(pop.getContent()+
-    `<br><a href="#" style="color:var(--warn)" onclick="window._delDraw(${d.id});return false;">🗑 Remover desenho</a>`);
+  const orig=pop.getContent(); // função definida em addFeature
+  const linkRemover='<br><a href="#" style="color:var(--warn)" onclick="window._delDraw('+d.id+');return false;">🗑 Remover desenho</a>';
+  pop.setContent(function(layer){
+    const base = (typeof orig==='function') ? orig(layer) : orig;
+    return base + linkRemover;
+  });
 }
 window._delDraw=function(id){
   const i=drawings.findIndex(d=>d.id===id); if(i<0) return;
@@ -1818,6 +1515,7 @@ window._delDraw=function(id){
     $('summary').style.display='none';
     $('searchWrap').style.display='none';
     $('emptyMsg').style.display='block';
+    montarExportSelect();
   }
 };
 function commitDrawing(d){
@@ -2265,6 +1963,47 @@ async function baixar(blob, nome){
   a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),4000);
 }
+/* ----- Link para abrir no Google Maps ----- */
+function _centroFeat(f){
+  try{
+    if(f.type==='point') return f.layer.getLatLng();
+    return f.layer.getBounds().getCenter();
+  }catch(e){ return null; }
+}
+function _urlMaps(lat,lng){
+  return 'https://www.google.com/maps/search/?api=1&query='+lat.toFixed(6)+','+lng.toFixed(6);
+}
+// no iPhone abre a folha de compartilhamento; senão copia; senão abre em nova aba
+async function compartilharLink(url, titulo){
+  try{
+    if(navigator.share){ await navigator.share({title:titulo||'Localização', url}); return; }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  try{
+    await navigator.clipboard.writeText(url);
+    toast('Link do Google Maps copiado!', 3000);
+    return;
+  }catch(e){}
+  window.open(url,'_blank');
+}
+async function linkMapsFeat(id){
+  const f=features.find(x=>x.id===id);
+  if(!f){ toast('Elemento não encontrado.'); return; }
+  const c=_centroFeat(f);
+  if(!c){ toast('Sem coordenada válida.'); return; }
+  await compartilharLink(_urlMaps(c.lat,c.lng), f.name);
+}
+async function linkMapsCamada(){
+  const sel=$('expLayer')?$('expLayer').value:'*';
+  const lista=featuresDaCamada(sel);
+  if(!lista.length){ toast('Nada para abrir nessa camada.'); return; }
+  if(lista.length===1){ await linkMapsFeat(lista[0].id); return; }
+  // várias feições: um pino no centro do conjunto
+  let la=0,ln=0,n=0;
+  lista.forEach(f=>{ const c=_centroFeat(f); if(c){ la+=c.lat; ln+=c.lng; n++; } });
+  if(!n){ toast('Sem coordenadas válidas.'); return; }
+  await compartilharLink(_urlMaps(la/n, ln/n), 'Camada');
+}
+
 /* ----- Exportação de Feição Única (por ID) ----- */
 async function exportarFeatUnica(id, fmt){
   const f = features.find(x => x.id === id);
@@ -2344,6 +2083,7 @@ async function exportarCamada(fmt){
 document.getElementById('expBtns').addEventListener('click', e=>{
   const b=e.target.closest('.expBtn'); if(!b) return; exportarCamada(b.dataset.fmt);
 });
+document.getElementById('expMapsBtn').addEventListener('click', ()=>linkMapsCamada());
 
 /* =========================================================================
    GeoTIFF: overlay de raster (bibliotecas carregadas sob demanda via CDN)
@@ -2545,6 +2285,7 @@ function removeFileFeatures(name){
     $('summary').style.display='none';
     $('searchWrap').style.display='none';
     $('emptyMsg').style.display='block';
+    montarExportSelect();
   }
 }
 
