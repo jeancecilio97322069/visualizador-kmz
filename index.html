@@ -44,6 +44,31 @@
   padding:7px;font-size:12px;cursor:pointer}
 .cm-btn:hover{border-color:var(--accent);color:var(--accent)}
 #histTit{border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
+/* ---- Vista 3D (MapLibre GL) + navegação + elevação ---- */
+#map3d{position:absolute;inset:0;z-index:1100;display:none}
+#mapWrap.is3d #map3d{display:block}
+#navExtra{position:absolute;right:12px;bottom:14px;z-index:1200;display:flex;flex-direction:column;gap:8px}
+.navBtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:12px;font-family:inherit;line-height:1.05;text-align:center}
+.navBtn:hover{background:var(--panel-2);color:var(--accent)}
+.navBtn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+#elevRead{position:absolute;left:50%;transform:translateX(-50%);bottom:70px;z-index:1250;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;padding:6px 12px;font-size:13px;font-weight:700;color:var(--accent);
+  box-shadow:0 3px 12px rgba(0,0,0,.4);display:none;pointer-events:none;white-space:nowrap}
+#perfilModal{position:fixed;left:0;right:0;bottom:0;z-index:3000;display:none}
+#perfilModal.open{display:block}
+.perfil-card{background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;width:100%;max-height:54vh;overflow:auto;box-shadow:0 -8px 30px rgba(0,0,0,.55)}
+.perfil-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.perfil-head h2{font-size:15px;color:var(--text);font-weight:700}
+.perfil-body{padding:14px 18px}
+#perfilChart{position:relative;max-width:980px;margin:0 auto}
+#perfilChart svg{width:100%;height:auto;display:block}
+#perfTip{position:absolute;pointer-events:none;background:#12160f;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;transform:translate(-50%,-125%);display:none;z-index:5;line-height:1.35}
+#perfTip .d{color:var(--accent)}
+.perfil-stats{display:flex;flex-wrap:wrap;gap:16px;margin:14px auto 0;max-width:980px;font-size:12px;color:var(--muted)}
+.perfil-stats div b{color:var(--accent);font-size:16px;display:block;font-weight:700}
+.perfil-close{border:none;background:var(--line);color:var(--muted);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px}
 html,body{height:100%;}
 body{
   font-family:'Archivo',system-ui,sans-serif;
@@ -582,6 +607,12 @@ body.sidebar-collapsed #sidebar {
 
 <div id="mapWrap">
   <div id="map"></div>
+  <div id="map3d"></div>
+  <div id="elevRead"></div>
+  <div id="navExtra">
+    <button class="navBtn" id="elevBtn" title="Mostrar elevação ao passar/tocar">⛰️<br>Elev.</button>
+    <button class="navBtn" id="btn3D" title="Vista 3D com relevo (girar/inclinar)">3D</button>
+  </div>
 
   <div id="camadasWrap">
     <button id="camadasBtn" title="Camadas do mapa">
@@ -797,6 +828,7 @@ document.querySelectorAll('#camadasMenu input[name="base"]').forEach(r=>{
     currentBase = baseLayers[this.value].addTo(map);
     currentBase.bringToBack && currentBase.bringToBack();
     baseAtual = this.value;
+    if(window.rebase3D) window.rebase3D();
   });
 });
 
@@ -1021,6 +1053,7 @@ function addFeature(g, name, desc, st, fileName, attrs){
         `<button style="flex:1;min-width:48px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'kml')">KML</button>`+
         `<button style="flex:1;min-width:48px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px;font-size:11px;cursor:pointer" onclick="exportarFeatUnica(${id},'shp')">SHP</button>`+
         `<button style="flex:1;min-width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:4px;padding:5px;font-size:11px;font-weight:700;cursor:pointer" onclick="linkMapsFeat(${id})">🌐 Abrir no Google Maps</button>`+
+        (g.type==='line'?`<button style="flex:1;min-width:100%;background:var(--panel-2);color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:5px;font-size:11px;font-weight:700;cursor:pointer" onclick="perfilElevacaoPorId(${id})">📈 Perfil de elevação</button>`:'')+
       `</div>`+
       `</div>`;
   });
@@ -1256,6 +1289,7 @@ function updateSummary(){
   $('lblSizeWrap').style.display='block';
   if($('attrWrap')) $('attrWrap').style.display='block';
   montarExportSelect();
+  if(window.atualizar3D) window.atualizar3D();
 }
 
 // filtro
@@ -1587,6 +1621,7 @@ $('drawX').addEventListener('click',exitDraw);
 $('drawOk').addEventListener('click',()=>{
   if(drawMode==='line' && drawPts.length<2){ toast('Adicione pelo menos 2 pontos.'); return; }
   if(drawMode==='poly' && drawPts.length<3){ toast('Adicione pelo menos 3 pontos.'); return; }
+  const eraLinha = drawMode==='line';
   commitDrawing({
     id:Date.now(),
     type: drawMode==='line'?'line':'polygon',
@@ -1594,7 +1629,13 @@ $('drawOk').addEventListener('click',()=>{
     pts: drawPts.map(p=>[+p.lat.toFixed(7), +p.lng.toFixed(7)])
   });
   exitDraw();
-  toast('Desenho adicionado — fica salvo neste dispositivo.', 3000);
+  if(eraLinha){
+    toast('Linha salva — abra o popup e toque em "📈 Perfil de elevação".', 4000);
+    const f=features[features.length-1];
+    if(f && f.layer) setTimeout(()=>{ try{ f.layer.openPopup(); }catch(e){} }, 300);
+  } else {
+    toast('Desenho adicionado — fica salvo neste dispositivo.', 3000);
+  }
 });
 
 // --- painel do marcador: sistemas de coordenadas ---
@@ -2523,7 +2564,422 @@ function fecharTabelaAtributos(){
   if(modal) modal.classList.remove('open');
 }
 
+
+/* =========================================================================
+   VISTA 3D (MapLibre GL) + ELEVAÇÃO (hover + perfil de linha)
+   - 3D: vista GPU sobreposta ao Leaflet, sincronizada, com relevo de terreno.
+   - Elevação: DEM/GeoTIFF carregado (offline) se cobrir o ponto; senão tiles
+     de relevo Terrarium online (mesma fonte do 3D). Cache por tile.
+   Tudo isolado num IIFE; o app 2D continua intacto.
+   ========================================================================= */
+(function(){
+let map3d=null, em3D=false, elevAtiva=false;
+
+/* ---------- libs sob demanda ---------- */
+let _mlLibs=null;
+function carregarMapLibre(){
+  if(_mlLibs) return _mlLibs;
+  const injCss=href=>{ if([...document.querySelectorAll('link')].some(l=>l.href===href)) return;
+    const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); };
+  const injJs=src=>new Promise((res,rej)=>{ if([...document.scripts].some(s=>s.src===src)) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('CDN')); document.head.appendChild(s); });
+  _mlLibs=(async()=>{
+    injCss('https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css');
+    await injJs('https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js');
+    if(typeof maplibregl==='undefined') throw new Error('maplibre');
+  })().catch(e=>{ _mlLibs=null; throw e; });
+  return _mlLibs;
+}
+let _gbLibs=null;
+function carregarGeoblaze(){
+  if(_gbLibs) return _gbLibs;
+  _gbLibs=new Promise((res,rej)=>{
+    if(typeof geoblaze!=='undefined') return res();
+    const s=document.createElement('script'); s.src='https://unpkg.com/geoblaze@2.6.0/dist/geoblaze.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('geoblaze')); document.head.appendChild(s);
+  }).catch(e=>{ _gbLibs=null; throw e; });
+  return _gbLibs;
+}
+
+/* =========================================================================
+   PARTE 1 — VISTA 3D (MapLibre GL)
+   ========================================================================= */
+function _fonteRaster(){
+  const g=n=>['https://mt0.google.com/vt/lyrs='+n+'&x={x}&y={y}&z={z}',
+              'https://mt1.google.com/vt/lyrs='+n+'&x={x}&y={y}&z={z}',
+              'https://mt2.google.com/vt/lyrs='+n+'&x={x}&y={y}&z={z}',
+              'https://mt3.google.com/vt/lyrs='+n+'&x={x}&y={y}&z={z}'];
+  const esri=['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'];
+  const b=(typeof baseAtual!=='undefined')?baseAtual:'gsat';
+  let tiles, attr='Google';
+  if(b==='ghyb'){ tiles=g('y'); }
+  else if(b==='sat'||b==='hyb'){ tiles=esri; attr='Esri'; }
+  else if(b==='osm'){ tiles=['https://tile.openstreetmap.org/{z}/{x}/{y}.png']; attr='© OpenStreetMap'; }
+  else if(b==='topo'){ tiles=['https://a.tile.opentopomap.org/{z}/{x}/{y}.png']; attr='© OpenTopoMap'; }
+  else { tiles=g('s'); } // gsat default
+  return {tiles, attr};
+}
+function _dadosGeoJSON(){
+  const fc={type:'FeatureCollection', features:[]};
+  (typeof features!=='undefined'?features:[]).forEach(f=>{
+    if(!f.visible) return;
+    if(f.type==='point' && !pointsOn) return;
+    let gj; try{ gj=f.layer.toGeoJSON(); }catch(e){ return; }
+    if(!gj) return;
+    gj.properties=gj.properties||{};
+    gj.properties.color=f.color||'#a4d65e';
+    gj.properties.preenche=(fillOn && (typeof fileFillOn==='function'?fileFillOn(f.fileName):true))?1:0;
+    gj.properties.weight=(f.type==='polygon'?2.5:3)*(typeof escLinha==='function'?escLinha():1);
+    gj.properties.label = labelsOn ? (f.name + (f.area?('\n'+fmtArea(f.area)):'')) : '';
+    fc.features.push(gj);
+  });
+  return fc;
+}
+function _estilo3D(){
+  const fr=_fonteRaster();
+  return {
+    version:8,
+    glyphs:'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
+    sources:{
+      base:{type:'raster', tiles:fr.tiles, tileSize:256, attribution:fr.attr},
+      relevo:{type:'raster-dem', tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+              tileSize:256, encoding:'terrarium', maxzoom:15, attribution:'Mapzen/AWS Terrain'},
+      dados:{type:'geojson', data:_dadosGeoJSON()}
+    },
+    layers:[
+      {id:'ceu', type:'background', paint:{'background-color':'#0d100b'}},
+      {id:'base', type:'raster', source:'base'},
+      {id:'fill', type:'fill', source:'dados',
+        filter:['==',['geometry-type'],'Polygon'],
+        paint:{'fill-color':['get','color'], 'fill-opacity':['case',['==',['get','preenche'],1],0.32,0]}},
+      {id:'linha', type:'line', source:'dados',
+        filter:['!=',['geometry-type'],'Point'],
+        layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['get','color'], 'line-width':['get','weight']}},
+      {id:'ponto', type:'circle', source:'dados',
+        filter:['==',['geometry-type'],'Point'],
+        paint:{'circle-radius':5, 'circle-color':['get','color'], 'circle-stroke-width':1.5, 'circle-stroke-color':'#12160f'}},
+      {id:'rotulo', type:'symbol', source:'dados',
+        filter:['!=',['get','label'],''],
+        layout:{'text-field':['get','label'], 'text-size':12, 'text-font':['Noto Sans Regular'], 'text-anchor':'center'},
+        paint:{'text-color':'#ffffff','text-halo-color':'#12160f','text-halo-width':1.6}}
+    ],
+    terrain:{source:'relevo', exaggeration:1.3}
+  };
+}
+// Órbita estilo Google Earth: botão do MEIO pressionado gira (horizontal) e inclina (vertical)
+function _orbitaBotaoMeio(m){
+  const cv=m.getCanvasContainer();
+  let orbit=false, lx=0, ly=0;
+  cv.addEventListener('mousedown', e=>{
+    if(e.button!==1) return;            // só botão do meio
+    orbit=true; lx=e.clientX; ly=e.clientY;
+    cv.style.cursor='move'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!orbit) return;
+    const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
+    const b=m.getBearing() - dx*0.45;
+    let p=m.getPitch() - dy*0.45; p=Math.max(0,Math.min(85,p));
+    m.jumpTo({bearing:b, pitch:p});
+  });
+  window.addEventListener('mouseup', e=>{ if(orbit){ orbit=false; cv.style.cursor=''; } });
+  cv.addEventListener('auxclick', e=>{ if(e.button===1) e.preventDefault(); }); // mata o autoscroll
+}
+async function entrar3D(){
+  if(em3D) return;
+  loading(true,'Carregando vista 3D…');
+  try{ await carregarMapLibre(); }
+  catch(e){ loading(false); toast('A vista 3D precisa de internet na 1ª vez pra baixar o motor GL. Conecte e tente de novo.'); return; }
+  try{
+    const c=map.getCenter(), z=map.getZoom();
+    document.getElementById('mapWrap').classList.add('is3d');
+    if(!map3d){
+      map3d=new maplibregl.Map({
+        container:'map3d', style:_estilo3D(),
+        center:[c.lng,c.lat], zoom:z, pitch:62, bearing:0,
+        dragRotate:true, pitchWithRotate:true
+      });
+      map3d.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-right');
+      map3d.touchZoomRotate.enableRotation();
+      map3d.on('mousemove', e=>{ if(elevAtiva) _elevHover({lat:e.lngLat.lat, lng:e.lngLat.lng}); });
+      _orbitaBotaoMeio(map3d);
+    } else {
+      map3d.setStyle(_estilo3D());
+      map3d.jumpTo({center:[c.lng,c.lat], zoom:z, pitch:62, bearing:0});
+    }
+    em3D=true;
+    const b=document.getElementById('btn3D'); b.classList.add('on'); b.textContent='2D';
+    setTimeout(()=>{ if(map3d) map3d.resize(); }, 60);
+  }catch(e){ toast('Falha ao abrir 3D: '+e.message); document.getElementById('mapWrap').classList.remove('is3d'); }
+  finally{ loading(false); }
+}
+function sair3D(){
+  if(!em3D) return;
+  em3D=false;
+  try{ const c=map3d.getCenter(), z=map3d.getZoom(); map.setView([c.lat,c.lng], Math.round(z)); }catch(e){}
+  document.getElementById('mapWrap').classList.remove('is3d');
+  const b=document.getElementById('btn3D'); b.classList.remove('on'); b.textContent='3D';
+}
+function toggle3D(){ em3D?sair3D():entrar3D(); }
+document.getElementById('btn3D').addEventListener('click', toggle3D);
+window.atualizar3D=function(){ if(em3D && map3d){ try{ const s=map3d.getSource('dados'); if(s) s.setData(_dadosGeoJSON()); }catch(e){} } };
+window.rebase3D=function(){ if(em3D && map3d){ try{ map3d.setStyle(_estilo3D()); }catch(e){} } };
+
+/* =========================================================================
+   PARTE 2 — ELEVAÇÃO (DEM carregado -> senão Terrarium online)
+   ========================================================================= */
+const _tileCache=new Map();
+function _lonLatToTilePx(lat,lng,z){
+  const n=Math.pow(2,z);
+  const xf=(lng+180)/360*n;
+  const latRad=lat*Math.PI/180;
+  const yf=(1-Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2*n;
+  const xt=Math.floor(xf), yt=Math.floor(yf);
+  return {z, xt, yt, px:Math.min(255,Math.floor((xf-xt)*256)), py:Math.min(255,Math.floor((yf-yt)*256))};
+}
+function _carregaTile(z,x,y){
+  const key=z+'/'+x+'/'+y;
+  if(_tileCache.has(key)){ const v=_tileCache.get(key); return (v&&v.then)?v:Promise.resolve(v); }
+  const p=new Promise(res=>{
+    const img=new Image(); img.crossOrigin='anonymous';
+    img.onload=()=>{ try{
+        const cv=document.createElement('canvas'); cv.width=256; cv.height=256;
+        const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0);
+        const data=ctx.getImageData(0,0,256,256); _tileCache.set(key,data); res(data);
+      }catch(e){ _tileCache.set(key,null); res(null); } };
+    img.onerror=()=>{ _tileCache.set(key,null); res(null); };
+    img.src='https://s3.amazonaws.com/elevation-tiles-prod/terrarium/'+z+'/'+x+'/'+y+'.png';
+  });
+  _tileCache.set(key,p);
+  return p;
+}
+async function _elevTerrarium(lat,lng,z){
+  z=Math.min(Math.max(z||13,8),15);
+  const t=_lonLatToTilePx(lat,lng,z);
+  const data=await _carregaTile(t.z,t.xt,t.yt);
+  if(!data) return null;
+  const i=(t.py*256+t.px)*4;
+  const R=data.data[i], G=data.data[i+1], B=data.data[i+2];
+  return (R*256 + G + B/256) - 32768;
+}
+async function _elevDEM(lat,lng){
+  const nomes=Object.keys(typeof RASTERS!=='undefined'?RASTERS:{});
+  if(!nomes.length) return null;
+  try{ await carregarGeoblaze(); }catch(e){ return null; }
+  for(const nm of nomes){
+    const r=RASTERS[nm];
+    const gr=r && r.layer && (r.layer.georasters?r.layer.georasters[0]:r.layer.georaster);
+    if(!gr) continue;
+    try{
+      const vals=geoblaze.identify(gr,[lng,lat]);
+      if(vals && vals.length && isFinite(vals[0])){
+        const v=vals[0];
+        if(v>-1e4 && v<1e5) return v;
+      }
+    }catch(e){}
+  }
+  return null;
+}
+async function elevacaoEm(lat,lng,z){
+  const d=await _elevDEM(lat,lng);
+  if(d!=null) return {v:d, fonte:'DEM'};
+  const t=await _elevTerrarium(lat,lng,z);
+  if(t!=null) return {v:t, fonte:'SRTM'};
+  return null;
+}
+window.elevacaoEm=elevacaoEm;
+
+/* --- leitura de elevação (hover no desktop / toque no mobile) --- */
+const elevRead=document.getElementById('elevRead');
+let _elevSeq=0, _elevTimer=null;
+async function _mostraElev(lat,lng){
+  const seq=++_elevSeq;
+  elevRead.style.display='block'; elevRead.textContent='⛰️ …';
+  const r=await elevacaoEm(lat,lng,Math.round(map.getZoom()));
+  if(seq!==_elevSeq) return;
+  if(!r){ elevRead.textContent='⛰️ sem dado'; return; }
+  elevRead.textContent='⛰️ '+r.v.toFixed(1)+' m'+(r.fonte==='DEM'?' (DEM)':'');
+}
+function _elevHover(latlng){ clearTimeout(_elevTimer); _elevTimer=setTimeout(()=>_mostraElev(latlng.lat,latlng.lng), 90); }
+map.on('mousemove', e=>{ if(elevAtiva && !em3D) _elevHover(e.latlng); });
+map.on('click', e=>{ if(elevAtiva) _mostraElev(e.latlng.lat, e.latlng.lng); });
+document.getElementById('elevBtn').addEventListener('click', ()=>{
+  elevAtiva=!elevAtiva;
+  document.getElementById('elevBtn').classList.toggle('on', elevAtiva);
+  if(elevAtiva) toast('Elevação ligada: passe o mouse (ou toque no mapa) pra ver a altitude.', 3800);
+  else elevRead.style.display='none';
+});
+
+/* =========================================================================
+   PARTE 3 — PERFIL DE ELEVAÇÃO DE UMA LINHA
+   ========================================================================= */
+function _amostraLinha(pts, n){
+  const seg=[]; let total=0;
+  for(let i=0;i<pts.length-1;i++){ const d=distM(pts[i],pts[i+1]); seg.push(d); total+=d; }
+  const out=[{lat:pts[0].lat,lng:pts[0].lng,d:0}];
+  if(total<=0){ return out; }
+  const step=total/(n-1);
+  let segI=0, segStart=0;
+  for(let k=1;k<n-1;k++){
+    const target=k*step;
+    while(segI<seg.length-1 && segStart+seg[segI]<target){ segStart+=seg[segI]; segI++; }
+    const t=(seg[segI]>0)?(target-segStart)/seg[segI]:0;
+    const a=pts[segI], b=pts[segI+1];
+    out.push({lat:a.lat+(b.lat-a.lat)*t, lng:a.lng+(b.lng-a.lng)*t, d:target});
+  }
+  out.push({lat:pts[pts.length-1].lat,lng:pts[pts.length-1].lng,d:total});
+  return out;
+}
+async function perfilElevacao(feat){
+  if(!feat || feat.type!=='line' || !feat.geom || !feat.geom.pts || feat.geom.pts.length<2){ toast('Perfil disponível só para linhas.'); return; }
+  const pts=feat.geom.pts;
+  loading(true,'Amostrando elevação ao longo da linha…');
+  try{
+    const compr=pathLenM(pts,false);
+    const N=Math.min(160, Math.max(24, Math.round(compr/20)));
+    const amostras=_amostraLinha(pts, N);
+    const z=Math.min(15, Math.max(12, Math.round(map.getZoom())));
+    const elevs=[];
+    for(const a of amostras){ const r=await elevacaoEm(a.lat,a.lng,z); elevs.push(r?r.v:null); }
+    loading(false);
+    mostrarPerfil(feat.name, amostras, elevs);
+  }catch(e){ loading(false); toast('Falha no perfil: '+e.message); }
+}
+window.perfilElevacao=perfilElevacao;
+window.perfilElevacaoPorId=function(id){ const f=features.find(x=>x.id===id); if(f) perfilElevacao(f); };
+
+function mostrarPerfil(nome, amostras, elevs){
+  const vv=elevs.filter(v=>v!=null && isFinite(v));
+  if(vv.length<2){ toast('Não consegui obter elevação (sem DEM carregado e sem internet?).'); return; }
+  const min=Math.min.apply(null,vv), max=Math.max.apply(null,vv);
+  const distTotal=amostras[amostras.length-1].d;
+  let ganho=0, perda=0;
+  for(let i=1;i<elevs.length;i++){ const a=elevs[i-1], b=elevs[i]; if(a==null||b==null) continue; const dz=b-a; if(dz>0) ganho+=dz; else perda+=-dz; }
+  const declMedia = distTotal>0 ? ((elevs[elevs.length-1]-elevs[0])/distTotal*100) : 0;
+
+  const W=900, H=220, mL=46, mR=14, mT=16, mB=34, iw=W-mL-mR, ih=H-mT-mB;
+  const rng=(max-min)||1;
+  const X=d=>mL + (distTotal>0?d/distTotal:0)*iw;
+  const Y=v=>mT + (1-(v-min)/rng)*ih;
+
+  let line='', started=false;
+  amostras.forEach((a,i)=>{ const v=elevs[i]; if(v==null){ started=false; return; }
+    line += (started?'L':'M')+X(a.d).toFixed(1)+' '+Y(v).toFixed(1)+' '; started=true; });
+  const firstIdx=elevs.findIndex(v=>v!=null);
+  let lastIdx=0; for(let i=elevs.length-1;i>=0;i--){ if(elevs[i]!=null){ lastIdx=i; break; } }
+  const areaPath=line + 'L'+X(amostras[lastIdx].d).toFixed(1)+' '+(mT+ih)+' L'+X(amostras[firstIdx].d).toFixed(1)+' '+(mT+ih)+' Z';
+
+  let grid='';
+  for(let i=0;i<=4;i++){ const val=min+rng*i/4, py=Y(val);
+    grid+='<line x1="'+mL+'" y1="'+py.toFixed(1)+'" x2="'+(W-mR)+'" y2="'+py.toFixed(1)+'" stroke="#31402b" stroke-width="1"/>';
+    grid+='<text x="'+(mL-6)+'" y="'+(py+3).toFixed(1)+'" fill="#93a288" font-size="10" text-anchor="end">'+val.toFixed(0)+'</text>'; }
+  let xg='';
+  for(let i=0;i<=4;i++){ const dd=distTotal*i/4;
+    xg+='<text x="'+X(dd).toFixed(1)+'" y="'+(H-10)+'" fill="#93a288" font-size="10" text-anchor="middle">'+fmtDist(dd)+'</text>'; }
+
+  const elevIni=elevs[firstIdx], elevFim=elevs[lastIdx];
+  const xi=X(amostras[firstIdx].d), yi=Y(elevIni);
+  const xf=X(amostras[lastIdx].d), yf=Y(elevFim);
+  const _rot=(x,y,txt,anchor)=>{ const acima = (y-mT) > ih*0.28; const dy = acima ? -9 : 16;
+    return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="4.5" fill="#a4d65e" stroke="#12160f" stroke-width="1.6"/>'
+      +'<text x="'+x.toFixed(1)+'" y="'+(y+dy).toFixed(1)+'" fill="#e8eee2" font-size="11" font-weight="700" text-anchor="'+anchor+'" paint-order="stroke" stroke="#12160f" stroke-width="3">'+txt+'</text>'; };
+  const marcadores = _rot(xi,yi,'Início '+elevIni.toFixed(0)+' m','start') + _rot(xf,yf,'Fim '+elevFim.toFixed(0)+' m','end');
+
+  const svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" preserveAspectRatio="xMidYMid meet" style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:block;touch-action:none">'
+    +grid
+    +'<path d="'+areaPath+'" fill="rgba(164,214,94,.18)" stroke="none"/>'
+    +'<path d="'+line+'" fill="none" stroke="#a4d65e" stroke-width="2" stroke-linejoin="round"/>'
+    +marcadores
+    +'<g id="perfTrack" style="display:none">'
+    +'<line id="ptLine" x1="0" y1="'+mT+'" x2="0" y2="'+(mT+ih)+'" stroke="#ffffff" stroke-width="1" stroke-dasharray="3 3" opacity="0.85"/>'
+    +'<circle id="ptDot" r="4.5" fill="#ffffff" stroke="#12160f" stroke-width="1.6"/>'
+    +'</g>'
+    +xg+'</svg>';
+
+  document.getElementById('perfilTit').textContent='📈 Perfil — '+nome;
+  document.getElementById('perfilChart').innerHTML=svg;
+  document.getElementById('perfilStats').innerHTML=
+     '<div><b>'+fmtDist(distTotal)+'</b>Distância</div>'
+    +'<div><b>'+elevIni.toFixed(0)+' m</b>Início</div>'
+    +'<div><b>'+elevFim.toFixed(0)+' m</b>Fim</div>'
+    +'<div><b>'+min.toFixed(0)+' m</b>Mín.</div>'
+    +'<div><b>'+max.toFixed(0)+' m</b>Máx.</div>'
+    +'<div><b>'+(max-min).toFixed(0)+' m</b>Desnível</div>'
+    +'<div><b>+'+ganho.toFixed(0)+' m</b>Subida acum.</div>'
+    +'<div><b>−'+perda.toFixed(0)+' m</b>Descida acum.</div>'
+    +'<div><b>'+declMedia.toFixed(1)+' %</b>Decliv. média</div>';
+  // estado p/ interação (cursor no gráfico -> ponto no mapa)
+  _perfState={
+    pts: amostras.map((a,i)=>({d:a.d, lat:a.lat, lng:a.lng, elev:elevs[i], x:X(a.d), y: elevs[i]!=null?Y(elevs[i]):null})),
+    mL, iw, mT, ih, distTotal, W, H
+  };
+  document.getElementById('perfilModal').classList.add('open');
+  // enquadra a linha acima do painel inferior
+  try{
+    const b=L.latLngBounds(amostras.map(a=>[a.lat,a.lng]));
+    map.fitBounds(b, {paddingTopLeft:[24,24], paddingBottomRight:[24, Math.round(window.innerHeight*0.5)], maxZoom: map.getZoom()+2, animate:true});
+  }catch(e){}
+  _ativarTrackerPerfil();
+}
+let _perfState=null, _perfMarker=null;
+function _ativarTrackerPerfil(){
+  const chart=document.getElementById('perfilChart');
+  const svg=chart && chart.querySelector('svg');
+  if(!svg || !_perfState) return;
+  let tip=document.getElementById('perfTip');
+  if(!tip){ tip=document.createElement('div'); tip.id='perfTip'; chart.appendChild(tip); }
+  const track=svg.querySelector('#perfTrack'), ptLine=svg.querySelector('#ptLine'), ptDot=svg.querySelector('#ptDot');
+  const S=_perfState;
+  function mostra(clientX){
+    const rect=svg.getBoundingClientRect(); if(!rect.width) return;
+    const scale=rect.width/S.W;
+    const sx=(clientX-rect.left)/scale;
+    let dist=(sx-S.mL)/S.iw*S.distTotal;
+    dist=Math.max(0,Math.min(S.distTotal,dist));
+    let best=null, bd=1e18, idx=-1;
+    S.pts.forEach((p,i)=>{ if(p.elev==null) return; const dd=Math.abs(p.d-dist); if(dd<bd){ bd=dd; best=p; idx=i; } });
+    if(!best) return;
+    track.style.display='';
+    ptLine.setAttribute('x1',best.x.toFixed(1)); ptLine.setAttribute('x2',best.x.toFixed(1));
+    ptDot.setAttribute('cx',best.x.toFixed(1)); ptDot.setAttribute('cy',best.y.toFixed(1));
+    let a=null,b=null; for(let i=idx-1;i>=0;i--){ if(S.pts[i].elev!=null){ a=S.pts[i]; break; } }
+    for(let i=idx+1;i<S.pts.length;i++){ if(S.pts[i].elev!=null){ b=S.pts[i]; break; } }
+    a=a||best; b=b||best;
+    const slope=(b.d-a.d)>0 ? (b.elev-a.elev)/(b.d-a.d)*100 : 0;
+    tip.style.display='block';
+    tip.style.left=(best.x*scale).toFixed(1)+'px';
+    tip.style.top=(best.y*scale).toFixed(1)+'px';
+    tip.innerHTML='<span class="d">'+best.elev.toFixed(1)+' m</span> · '+fmtDist(best.d)+' · '+slope.toFixed(1)+'%';
+    if(!_perfMarker){ _perfMarker=L.circleMarker([best.lat,best.lng],{radius:7,color:'#fff',weight:2,fillColor:'#e0a44b',fillOpacity:1,interactive:false}).addTo(map); }
+    else _perfMarker.setLatLng([best.lat,best.lng]);
+  }
+  function esconde(){ track.style.display='none'; tip.style.display='none'; if(_perfMarker){ map.removeLayer(_perfMarker); _perfMarker=null; } }
+  svg.addEventListener('mousemove', e=>mostra(e.clientX));
+  svg.addEventListener('mouseleave', esconde);
+  svg.addEventListener('touchmove', e=>{ if(e.touches[0]){ mostra(e.touches[0].clientX); e.preventDefault(); } }, {passive:false});
+  svg.addEventListener('touchend', esconde);
+  S._esconde=esconde;
+}
+window.fecharPerfil=function(){ document.getElementById('perfilModal').classList.remove('open'); if(_perfState && _perfState._esconde) _perfState._esconde(); if(_perfMarker){ try{ map.removeLayer(_perfMarker); }catch(e){} _perfMarker=null; } };
+
+})();
+
+
 </script>
+
+<div id="perfilModal">
+  <div class="perfil-card">
+    <div class="perfil-head">
+      <h2 id="perfilTit">📈 Perfil de elevação</h2>
+      <button class="perfil-close" onclick="fecharPerfil()" title="Fechar">✕</button>
+    </div>
+    <div class="perfil-body">
+      <div id="perfilChart"></div>
+      <div class="perfil-stats" id="perfilStats"></div>
+    </div>
+  </div>
+</div>
 
 <div id="attrModal">
   <div class="attr-card">
