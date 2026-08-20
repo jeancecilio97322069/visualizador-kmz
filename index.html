@@ -192,7 +192,8 @@ body.sidebar-collapsed #sidebar {
 #lblSizeWrap{margin:0 16px 10px;display:none}
 #lblSizeWrap .cap{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;display:flex;justify-content:space-between}
 #lblSizeWrap input[type=range]{width:100%;accent-color:var(--accent);height:20px}
-#searchWrap{margin:0 16px 8px;display:none}
+#sideScroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+#searchWrap{margin:0 16px 8px;display:none;position:sticky;top:0;z-index:3;background:var(--panel);padding-top:8px}
 #search{
   width:100%;
   background:var(--panel-2);
@@ -208,8 +209,8 @@ body.sidebar-collapsed #sidebar {
 #search::placeholder{color:var(--muted)}
 
 #featList{
-  flex:1;
-  overflow-y:auto;
+  flex:1 1 auto;
+  overflow:visible;
   padding:4px 10px 16px;
 }
 #featList::-webkit-scrollbar{width:8px}
@@ -557,6 +558,7 @@ body.sidebar-collapsed #sidebar {
     </button>
   </header>
 
+  <div id="sideScroll">
   <div id="dropzone">
     <strong>Toque para escolher</strong> ou arraste arquivos<br>
     .kmz &nbsp;•&nbsp; .kml &nbsp;•&nbsp; .shp &nbsp;•&nbsp; .zip &nbsp;•&nbsp; .tif<br>
@@ -564,19 +566,11 @@ body.sidebar-collapsed #sidebar {
   </div>
   <input type="file" id="fileInput" accept=".kmz,.kml,.shp,.dbf,.prj,.shx,.cpg,.zip,.tif,.tiff,.geotiff,.ecw" multiple>
 
-  <div id="summary">
-    <span class="big" id="sumCount">0 polígonos</span><br>
-    <span id="sumArea" class="mono"></span>
-  </div>
-
   <div id="savedWrap">
     <div class="cap">Arquivos salvos</div>
     <div id="savedList"></div>
   </div>
 
-    <div id="attrWrap" style="margin:0 16px 10px;display:none">
-    <button id="openAttrBtn" style="width:100%;padding:9px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;" onclick="abrirTabelaAtributos()">📋 Tabela de Atributos</button>
-  </div>
   <div id="exportWrap" style="display:none">
     <div class="cap">Exportar camada</div>
     <select id="expLayer"></select>
@@ -603,6 +597,7 @@ body.sidebar-collapsed #sidebar {
   <div id="featList">
     <div id="emptyMsg">Nenhum arquivo carregado ainda.<br>Os polígonos aparecerão aqui com nome, área e perímetro.</div>
   </div>
+  </div>
 </aside>
 
 <div id="mapWrap">
@@ -610,6 +605,8 @@ body.sidebar-collapsed #sidebar {
   <div id="map3d"></div>
   <div id="elevRead"></div>
   <div id="navExtra">
+    <button class="navBtn" id="zInBtn" title="Aproximar" style="font-size:22px">+</button>
+    <button class="navBtn" id="zOutBtn" title="Afastar" style="font-size:22px">−</button>
     <button class="navBtn" id="elevBtn" title="Mostrar elevação ao passar/tocar">⛰️<br>Elev.</button>
     <button class="navBtn" id="btn3D" title="Vista 3D com relevo (girar/inclinar)">3D</button>
   </div>
@@ -719,7 +716,7 @@ body.sidebar-collapsed #sidebar {
    ===================================================== */
 
 // ---------- Mapa e camadas base ----------
-const map = L.map('map',{zoomControl:true, preferCanvas:false}).setView([-15.5,-53],4);
+const map = L.map('map',{zoomControl:false, preferCanvas:false}).setView([-15.5,-53],4);
 
 const baseLayers = {
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
@@ -1282,12 +1279,11 @@ function updateSummary(){
   let c=`${polys.length} polígono${polys.length!==1?'s':''}`;
   if(lines) c+=` · ${lines} linha${lines!==1?'s':''}`;
   if(pts) c+=` · ${pts} ponto${pts!==1?'s':''}`;
-  $('sumCount').textContent=c;
-  $('sumArea').textContent= totalHa>0 ? 'Área total: '+totalHa.toFixed(2)+' ha' : '';
-  $('summary').style.display='block';
+  const _sc=$('sumCount'); if(_sc) _sc.textContent=c;
+  const _sa=$('sumArea'); if(_sa) _sa.textContent= totalHa>0 ? 'Área total: '+totalHa.toFixed(2)+' ha' : '';
+  const _sm=$('summary'); if(_sm) _sm.style.display='block';
   $('searchWrap').style.display='block';
   $('lblSizeWrap').style.display='block';
-  if($('attrWrap')) $('attrWrap').style.display='block';
   montarExportSelect();
   if(window.atualizar3D) window.atualizar3D();
 }
@@ -1546,7 +1542,7 @@ window._delDraw=function(id){
   map.closePopup();
   if(features.length) updateSummary();
   else{
-    $('summary').style.display='none';
+    const _sm=$('summary'); if(_sm) _sm.style.display='none';
     $('searchWrap').style.display='none';
     $('emptyMsg').style.display='block';
     montarExportSelect();
@@ -2323,7 +2319,7 @@ function removeFileFeatures(name){
   if(!removed) return;
   if(features.length) updateSummary();
   else{
-    $('summary').style.display='none';
+    const _sm=$('summary'); if(_sm) _sm.style.display='none';
     $('searchWrap').style.display='none';
     $('emptyMsg').style.display='block';
     montarExportSelect();
@@ -2723,6 +2719,8 @@ function sair3D(){
 }
 function toggle3D(){ em3D?sair3D():entrar3D(); }
 document.getElementById('btn3D').addEventListener('click', toggle3D);
+document.getElementById('zInBtn').addEventListener('click', ()=>{ if(em3D&&map3d) map3d.zoomIn(); else map.zoomIn(); });
+document.getElementById('zOutBtn').addEventListener('click', ()=>{ if(em3D&&map3d) map3d.zoomOut(); else map.zoomOut(); });
 window.atualizar3D=function(){ if(em3D && map3d){ try{ const s=map3d.getSource('dados'); if(s) s.setData(_dadosGeoJSON()); }catch(e){} } };
 window.rebase3D=function(){ if(em3D && map3d){ try{ map3d.setStyle(_estilo3D()); }catch(e){} } };
 
