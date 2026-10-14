@@ -440,6 +440,23 @@ body.sidebar-collapsed #sidebar {
 }
 
 /* Medições */
+/* ---- Gravação de trajeto (GPS) ---- */
+#trkBar{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:1160;display:none;
+  flex-direction:column;gap:7px;background:var(--panel);border:1px solid #ff5a36;border-radius:12px;
+  padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.55);width:370px;max-width:calc(100% - 128px)}
+#trkBar .tk-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#trkBar input[type=text]{flex:1;min-width:0;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;
+  color:var(--text);padding:6px 8px;font-size:.82rem;font-family:inherit}
+#trkBar select{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--text);font-size:.74rem;padding:3px 4px}
+#trkBar label{font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:4px}
+#trkBar button{flex:1;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font-family:inherit;
+  font-size:.76rem;padding:7px 6px;border-radius:7px;cursor:pointer;white-space:nowrap}
+#trkBar button.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+#trkStats{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--muted)}
+.tk-rec{width:11px;height:11px;border-radius:50%;background:#ff5a36;flex:none;animation:tkrec 1s infinite}
+.tk-rec.pausa{background:var(--muted);animation:none}
+@keyframes tkrec{50%{opacity:.25}}
+#trkBtn.on{background:#ff5a36;color:#fff}
 #measBar,#drawBar{
   position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
   z-index:1150;display:none;align-items:center;gap:6px;
@@ -649,6 +666,7 @@ body.sidebar-collapsed #sidebar {
     </div>
     <div class="tb-group">
       <button class="tb-btn" id="gpsBtn">GPS</button>
+      <button class="tb-btn" id="trkBtn" title="Gravar trajeto pelo GPS (divisa, carreador…)">Trajeto</button>
     </div>
     <div class="tb-group" id="measGroup">
       <button class="tb-btn" data-meas="dist">Dist.</button>
@@ -672,6 +690,25 @@ body.sidebar-collapsed #sidebar {
     <button id="measOk">Concluir</button>
     <button id="measClear">Limpar tudo</button>
     <button id="measX">✕</button>
+  </div>
+
+  <div id="trkBar">
+    <div class="tk-row"><span class="tk-rec" id="trkDot"></span><input type="text" id="trkName" placeholder="Nome do trajeto"></div>
+    <div id="trkStats">aguardando GPS…</div>
+    <div class="tk-row">
+      <label>Passo <select id="trkStep"><option value="1">1 m</option><option value="2">2 m</option><option value="3">3 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+      <label>Precisão máx. <select id="trkAcc"><option value="5">5 m</option><option value="10">10 m</option><option value="15">15 m</option><option value="30">30 m</option><option value="9999">sem filtro</option></select></label>
+      <label><input type="checkbox" id="trkSmooth" checked> Suavizar</label>
+    </div>
+    <div class="tk-row">
+      <button id="trkPause">Pausar</button>
+      <button id="trkPin">+ Ponto aqui</button>
+      <button id="trkUndo">Desfazer</button>
+    </div>
+    <div class="tk-row">
+      <button id="trkOk" class="pri">Concluir</button>
+      <button id="trkX">Descartar</button>
+    </div>
   </div>
 
   <div id="drawBar">
@@ -2328,7 +2365,7 @@ function removeFileFeatures(name){
 
 async function renderSavedChips(){
   let recs=[];
-  try{ recs=(await dbAll()).filter(r=>r.name!=='__prefs__' && r.name!=='__draw__'); }catch(e){}
+  try{ recs=(await dbAll()).filter(r=>r.name!=='__prefs__' && r.name!=='__draw__' && r.name!=='__trk__'); }catch(e){}
   const w=$('savedWrap'), l=$('savedList');
   if(!recs.length){ w.style.display='none'; l.innerHTML=''; return; }
   w.style.display='block';
@@ -2389,7 +2426,7 @@ async function renderSavedChips(){
     }
     const dr=recs.find(r=>r.name==='__draw__');
     if(dr && Array.isArray(dr.data)) drawings=dr.data;
-    const files=recs.filter(r=>r.name!=='__prefs__' && r.name!=='__draw__');
+    const files=recs.filter(r=>r.name!=='__prefs__' && r.name!=='__draw__' && r.name!=='__trk__');
     if(!files.length && !drawings.length) return;
     loading(true,'Restaurando arquivos salvos…');
     for(const r of files){
@@ -2560,6 +2597,184 @@ function fecharTabelaAtributos(){
   if(modal) modal.classList.remove('open');
 }
 
+
+/* =========================================================================
+   GRAVAÇÃO DE TRAJETO POR GPS (divisa de carreador, caminhamento etc.)
+   - grava pontos conforme anda (filtro de passo mínimo e precisão)
+   - salvo a cada ponto no IndexedDB: se o app fechar, retoma depois
+   - Wake Lock mantém a tela acesa (o Safari para o GPS com tela bloqueada)
+   - ao concluir vira um "Desenho" (linha) => exporta KMZ/KML/SHP pelo popup
+   ========================================================================= */
+const trk={on:false,paused:false,watch:null,pts:[],dist:0,last:null,cur:null,acc:null,
+           line:null,head:null,lock:null,t0:null,follow:true,timer:null};
+const trkG=L.layerGroup().addTo(map);
+function trkCfg(){ return {step:+$('trkStep').value, acc:+$('trkAcc').value}; }
+function trkSave(){
+  dbPut({name:'__trk__', data:{name:$('trkName').value, pts:trk.pts, t0:trk.t0}, savedAt:Date.now()}).catch(()=>{});
+}
+function trkStats(){
+  let s=fmtDist(trk.dist)+' · '+trk.pts.length+' pts';
+  if(trk.acc!=null) s+=' · GPS ±'+trk.acc.toFixed(0)+' m';
+  if(trk.t0) s+=' · '+Math.floor((Date.now()-trk.t0)/60000)+' min';
+  if(trk.paused) s+=' · PAUSADO';
+  const el=$('trkStats'); el.textContent=s;
+  el.style.color = trk.acc==null ? 'var(--muted)' : (trk.acc<=trkCfg().acc ? 'var(--accent)' : 'var(--warn)');
+  $('trkDot').classList.toggle('pausa', trk.paused);
+}
+function trkDraw(){
+  const ll=trk.pts.map(p=>[p[0],p[1]]);
+  if(!trk.line) trk.line=L.polyline(ll,{color:'#ff5a36',weight:4,opacity:.95,interactive:false}).addTo(trkG);
+  else trk.line.setLatLngs(ll);
+  trkStats();
+}
+function trkAdd(ll){
+  if(trk.last) trk.dist+=distM(trk.last,ll);
+  trk.pts.push([+ll.lat.toFixed(7), +ll.lng.toFixed(7)]);
+  trk.last=ll; trkDraw(); trkSave();
+}
+function trkOnPos(pos){
+  const c=pos.coords, ll=L.latLng(c.latitude,c.longitude);
+  trk.acc=c.accuracy||null; trk.cur=ll;
+  if(!trk.head) trk.head=L.marker(ll,{icon:L.divIcon({className:'',
+      html:'<div class="gps-dot" style="background:#ff5a36"></div>',iconSize:[16,16],iconAnchor:[8,8]}),
+      interactive:false, zIndexOffset:950}).addTo(trkG);
+  else trk.head.setLatLng(ll);
+  if(trk.follow) map.panTo(ll,{animate:true});
+  if(!trk.paused){
+    const cfg=trkCfg();
+    if((c.accuracy||0)<=cfg.acc && (!trk.last || distM(trk.last,ll)>=cfg.step)) trkAdd(ll);
+  }
+  trkStats();
+}
+function trkErr(err){
+  if(err.code===1){ trkStopWatch(); toast('Permissão de localização negada — habilite nos ajustes do navegador/app.'); }
+  else toast('GPS instável ('+err.message+') — continuo tentando…', 2500);
+}
+async function trkWake(){
+  try{
+    if('wakeLock' in navigator && !trk.lock){
+      trk.lock=await navigator.wakeLock.request('screen');
+      trk.lock.addEventListener('release',()=>{ trk.lock=null; });
+    }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && trk.on) trkWake(); });
+function trkStopWatch(){
+  if(trk.watch!==null) navigator.geolocation.clearWatch(trk.watch);
+  trk.watch=null;
+  if(trk.lock){ trk.lock.release().catch(()=>{}); trk.lock=null; }
+  clearInterval(trk.timer); trk.timer=null;
+}
+function trkStart(resume){
+  if(!('geolocation' in navigator)){ toast('GPS não disponível neste navegador.'); return; }
+  exitMeasure(); exitDraw();
+  if(prefs.trkStep) $('trkStep').value=prefs.trkStep; else $('trkStep').value='3';
+  if(prefs.trkAcc)  $('trkAcc').value=prefs.trkAcc;   else $('trkAcc').value='15';
+  trk.on=true; trk.paused=false; trk.follow=true;
+  if(!resume){
+    trk.pts=[]; trk.dist=0; trk.last=null; trk.t0=Date.now();
+    $('trkName').value='Trajeto '+(drawings.filter(d=>d.type==='line').length+1);
+  }
+  $('trkBar').style.display='flex';
+  $('trkBtn').classList.add('on'); $('trkBtn').textContent='● REC';
+  $('trkPause').textContent='Pausar';
+  trk.watch=navigator.geolocation.watchPosition(trkOnPos,trkErr,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  trk.timer=setInterval(trkStats,15000);
+  trkWake(); trkDraw();
+}
+function trkReset(){
+  trkStopWatch();
+  Object.assign(trk,{on:false,paused:false,pts:[],dist:0,last:null,cur:null,acc:null,line:null,head:null,t0:null});
+  trkG.clearLayers();
+  $('trkBar').style.display='none';
+  $('trkBtn').classList.remove('on'); $('trkBtn').textContent='Trajeto';
+  dbDel('__trk__').catch(()=>{});
+}
+// Douglas-Peucker em metros (remove o "serrilhado" do GPS do celular)
+function simplificaDP(pts,tol){
+  if(pts.length<3) return pts.slice();
+  const lat0=pts[0][0]*Math.PI/180, kx=111320*Math.cos(lat0), ky=110540;
+  const xy=pts.map(p=>[p[1]*kx, p[0]*ky]);
+  const keep=new Uint8Array(pts.length); keep[0]=1; keep[pts.length-1]=1;
+  const st=[[0,pts.length-1]];
+  while(st.length){
+    const [a,b]=st.pop(); let md=0, mi=-1;
+    const x1=xy[a][0], y1=xy[a][1], dx=xy[b][0]-x1, dy=xy[b][1]-y1, q=dx*dx+dy*dy;
+    for(let i=a+1;i<b;i++){
+      let t=q?((xy[i][0]-x1)*dx+(xy[i][1]-y1)*dy)/q:0; t=Math.max(0,Math.min(1,t));
+      const ex=x1+t*dx-xy[i][0], ey=y1+t*dy-xy[i][1], d=Math.hypot(ex,ey);
+      if(d>md){ md=d; mi=i; }
+    }
+    if(md>tol && mi>0){ keep[mi]=1; st.push([a,mi],[mi,b]); }
+  }
+  return pts.filter((p,i)=>keep[i]);
+}
+
+$('trkBtn').addEventListener('click',()=>{
+  if(!trk.on){ trkStart(false); return; }
+  // já gravando: recentraliza e volta a seguir
+  trk.follow=true;
+  if(trk.cur) map.setView(trk.cur, Math.max(map.getZoom(),17));
+  $('trkBar').style.display='flex';
+});
+map.on('dragstart',()=>{ if(trk.on) trk.follow=false; });
+$('trkPause').addEventListener('click',()=>{
+  trk.paused=!trk.paused;
+  $('trkPause').textContent=trk.paused?'Retomar':'Pausar';
+  if(!trk.paused) toast('Gravando — o trecho pausado vira uma reta até aqui.', 2600);
+  trkStats();
+});
+$('trkPin').addEventListener('click',()=>{
+  if(!trk.cur){ toast('Ainda sem posição do GPS.'); return; }
+  trkAdd(trk.cur); toast('Ponto adicionado.', 1500);
+});
+$('trkUndo').addEventListener('click',()=>{
+  if(!trk.pts.length) return;
+  trk.pts.pop();
+  trk.dist=pathLenM(trk.pts.map(p=>L.latLng(p[0],p[1])),false);
+  trk.last=trk.pts.length?L.latLng(trk.pts[trk.pts.length-1][0],trk.pts[trk.pts.length-1][1]):null;
+  trkDraw(); trkSave();
+});
+$('trkStep').addEventListener('change',e=>{ prefs.trkStep=e.target.value; savePrefs(); });
+$('trkAcc').addEventListener('change',e=>{ prefs.trkAcc=e.target.value; savePrefs(); });
+$('trkName').addEventListener('change',trkSave);
+$('trkX').addEventListener('click',()=>{
+  if(trk.pts.length>1 && !confirm('Descartar o trajeto gravado ('+trk.pts.length+' pontos)?')) return;
+  trkReset();
+});
+$('trkOk').addEventListener('click',()=>{
+  if(trk.pts.length<2){ toast('O trajeto precisa de pelo menos 2 pontos.'); return; }
+  let pts=trk.pts.slice();
+  const antes=pts.length;
+  if($('trkSmooth').checked) pts=simplificaDP(pts,1.0);
+  const nome=$('trkName').value.trim()||'Trajeto';
+  commitDrawing({id:Date.now(), type:'line', name:nome, pts});
+  trkReset();
+  const f=features[features.length-1];
+  if(f && f.layer){
+    map.fitBounds(f.layer.getBounds().pad(.2));
+    setTimeout(()=>{ try{ f.layer.openPopup(); }catch(e){} }, 350);
+  }
+  toast('Trajeto salvo ('+fmtDist(f?f.perim:0)+(antes!==pts.length?', '+antes+'→'+pts.length+' pts':'')+') — exporte KMZ/KML/SHP pelo popup.', 5000);
+});
+// trajeto não concluído (app fechou / Safari recarregou) => oferece retomar
+setTimeout(()=>{
+  dbAll().then(recs=>{
+    const t=recs.find(r=>r.name==='__trk__');
+    if(!t || !t.data || !t.data.pts || !t.data.pts.length) return;
+    if(!confirm('Existe um trajeto em andamento ('+t.data.pts.length+' pontos) que não foi concluído. Continuar?')){
+      dbDel('__trk__').catch(()=>{}); return;
+    }
+    trk.pts=t.data.pts; trk.t0=t.data.t0||Date.now();
+    trk.dist=pathLenM(trk.pts.map(p=>L.latLng(p[0],p[1])),false);
+    const lp=trk.pts[trk.pts.length-1]; trk.last=L.latLng(lp[0],lp[1]);
+    $('trkName').value=t.data.name||'Trajeto';
+    trkStart(true);
+    trk.paused=true; trk.follow=false; $('trkPause').textContent='Retomar'; trkStats();
+    try{ map.fitBounds(trk.line.getBounds().pad(.2)); }catch(e){}
+    toast('Trajeto restaurado em PAUSA — vá até o ponto final e toque em Retomar.', 5000);
+  }).catch(()=>{});
+}, 1800);
 
 /* =========================================================================
    VISTA 3D (MapLibre GL) + ELEVAÇÃO (hover + perfil de linha)
