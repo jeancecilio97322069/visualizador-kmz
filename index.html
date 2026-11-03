@@ -496,12 +496,6 @@ body.sidebar-collapsed #sidebar {
 .cl-n b{font-family:'JetBrains Mono',monospace;font-size:.92rem}
 .cl-n span{font-size:.62rem;color:var(--muted)}
 .cl-arr{display:inline-block;color:#3fa7ff}
-#clStrip{display:flex;gap:1px;height:26px;align-items:stretch}
-.cl-h{flex:1;border-radius:2px;cursor:pointer;position:relative;opacity:.85}
-.cl-h.sel{outline:2px solid #fff;opacity:1;z-index:1}
-.cl-h i{position:absolute;top:-13px;left:0;font-size:.58rem;color:var(--muted);font-style:normal;white-space:nowrap}
-#clChart svg{width:100%;height:auto;display:block;cursor:crosshair}
-#clHour{font-size:.74rem;line-height:1.4}
 .cl-eta{font-size:.82rem;font-weight:600;padding:8px;border-radius:8px;background:rgba(63,167,255,.14);border:1px solid #3fa7ff}
 .cl-eta.now{background:rgba(229,72,77,.15);border-color:#e5484d}
 .cl-eta.ok{background:rgba(46,160,67,.12);border-color:#2ea043;font-weight:500}
@@ -509,7 +503,31 @@ body.sidebar-collapsed #sidebar {
 .cl-tick{font:600 11px 'Archivo',sans-serif;color:#3fa7ff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap}
 .cl-wind{display:flex;align-items:center;gap:3px;font:700 12px 'JetBrains Mono',monospace;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000}
 .cl-wind span{display:inline-block;color:#3fa7ff;font-size:16px;transform-origin:50% 50%}
-.cl-lims{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+/* ---- Chuva e vento por raio ---- */
+.rv-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#clPanel .rv-seg button.ci-b{white-space:normal;font-size:.72rem}
+.rv-bar{height:5px;background:var(--panel);border-radius:4px;overflow:hidden}
+.rv-bar i{display:block;height:100%;width:0;background:#3fa7ff;transition:width .2s}
+.rv-rank{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.rv-rank li{display:flex;gap:7px;align-items:center;padding:6px 8px;border-radius:8px;background:var(--panel);border:1px solid var(--line);cursor:pointer;font-size:.76rem}
+.rv-rank li i{width:11px;height:11px;border-radius:3px;flex:none}
+.rv-rank li em{font-style:normal;color:var(--muted);margin-left:auto;font-size:.7rem}
+.rv-atab{width:100%;border-collapse:collapse;font-size:.72rem}
+.rv-atab th{color:var(--muted);font-weight:500;text-align:right;padding:4px 3px;border-bottom:1px solid var(--line);font-size:.64rem}
+.rv-atab th:first-child,.rv-atab td:first-child{text-align:left}
+.rv-atab td{padding:6px 3px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-family:'JetBrains Mono',monospace}
+.rv-atab td:first-child{max-width:120px;overflow:hidden;text-overflow:ellipsis;font-family:inherit}
+.rv-atab tr{cursor:pointer}
+.rv-atab i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+.rv-legend{background:rgba(26,32,23,.92);color:var(--text);padding:8px 10px;border-radius:8px;font-size:11px;line-height:1.5;border:1px solid var(--line)}
+.rv-legend .lt{font-weight:700;margin-bottom:3px}
+.rv-legend i{display:inline-block;width:14px;height:10px;margin-right:6px;border-radius:2px;vertical-align:middle;border:1px solid #0004}
+.rv-pp table{border-collapse:collapse;margin:6px 0}
+.rv-pp td{padding:1px 8px 1px 0;font-size:12px}
+.rv-pp td:last-child{font-weight:700}
+.rv-ck{font-size:10.5px;color:var(--muted)}
+.rv-inpop{margin:6px 0 4px;padding:6px 8px;border-radius:7px;background:rgba(63,167,255,.10);border:1px solid rgba(63,167,255,.45)}
+.rv-pt{font-size:11px;font-weight:700;color:#3fa7ff}
 /* ---- painéis minimizados (só animação) ---- */
 .ci-mini{display:none;flex-direction:column;gap:5px;padding:8px 12px 10px}
 .ci-minb{transition:transform .15s;color:var(--accent)!important;border-color:var(--accent)!important}
@@ -713,7 +731,7 @@ body.sidebar-collapsed #sidebar {
     <button class="navBtn" id="elevBtn" title="Mostrar elevação ao passar/tocar">⛰️<br>Elev.</button>
     <button class="navBtn" id="btn3D" title="Vista 3D com relevo (girar/inclinar)">3D</button>
     <button class="navBtn" id="ciBtn" title="Cintilação ionosférica (INPE / NOAA)">📡<br>Cint.</button>
-    <button class="navBtn" id="clBtn" title="Clima: radar, chegada da chuva, pulverização">🌦<br>Clima</button>
+    <button class="navBtn" id="clBtn" title="Clima: radar, chegada da chuva, chuva e vento por raio">🌦<br>Clima</button>
   </div>
 
   <div id="camadasWrap">
@@ -826,25 +844,59 @@ body.sidebar-collapsed #sidebar {
       </div>
 
       <div class="ci-card">
-        <div class="ci-tit">Próximas 48 h · janela de pulverização</div>
-        <div id="clStrip" style="margin-top:12px"></div>
-        <div id="clChart"></div>
-        <div id="clHour"></div>
-        <div class="ci-sub" id="clBest"></div>
-        <details>
-          <summary>Limites de pulverização</summary>
-          <div class="cl-lims">
-            <label class="ci-lb">Vento mín<input id="clL_vMin" type="number" step="1"></label>
-            <label class="ci-lb">Vento máx<input id="clL_vMax" type="number" step="1"></label>
-            <label class="ci-lb">Rajada máx<input id="clL_raj" type="number" step="1"></label>
-            <label class="ci-lb">Temp máx<input id="clL_tMax" type="number" step="1"></label>
-            <label class="ci-lb">ΔT mín<input id="clL_dtMin" type="number" step="0.5"></label>
-            <label class="ci-lb">ΔT máx<input id="clL_dtMax" type="number" step="0.5"></label>
-            <label class="ci-lb">UR mín %<input id="clL_urMin" type="number" step="1"></label>
-            <label class="ci-lb">&nbsp;<button class="ci-b" id="clLReset">Padrão</button></label>
-          </div>
+        <div class="ci-tit">Chuva e vento por raio · locais mais afetados</div>
+        <div class="ci-sub">Centro = o ponto do Local acima. Grade de pontos do modelo num raio de até 45 km.</div>
+        <div class="ci-row">
+          <label class="ci-lb" style="flex:2">Raio <b id="rvROut" style="color:var(--text)"></b><input type="range" id="rvR" min="30" max="45" step="1" style="padding:0"></label>
+          <label class="ci-lb">Grade<select id="rvStep"><option value="3">3 km</option><option value="4">4 km</option><option value="5">5 km</option><option value="6">6 km</option></select></label>
+        </div>
+        <div class="ci-sub" id="rvPts" style="text-align:right;margin-top:-4px"></div>
+        <div class="ci-row">
+          <label class="ci-lb">Até o dia<input type="date" id="rvEnd"></label>
+          <label class="ci-lb">Janela<select id="rvDays"><option value="1">1 dia</option><option value="2">2 dias</option><option value="3">3 dias</option><option value="4">4 dias</option><option value="5">5 dias</option></select></label>
+        </div>
+        <label class="ci-lb">Modelo<select id="rvModel">
+          <option value="best_match">Automático (melhor disponível)</option>
+          <option value="ecmwf_ifs025">ECMWF IFS 0,25°</option>
+          <option value="gfs_seamless">GFS (NOAA)</option>
+          <option value="icon_seamless">ICON (DWD)</option>
+        </select></label>
+        <div class="ci-sub" id="rvPer"></div>
+        <div class="ci-row">
+          <button class="ci-b pri" id="rvGo">Consultar chuva e vento</button>
+          <button class="ci-b" id="rvStop" style="display:none;flex:0 0 auto">Cancelar</button>
+          <button class="ci-b" id="rvClear" style="flex:0 0 auto" title="Limpar grade do mapa">Limpar</button>
+        </div>
+        <div class="rv-bar"><i id="rvProg"></i></div>
+        <div class="ci-sub" id="rvStat"></div>
+
+        <div class="rv-seg" id="rvSeg">
+          <button class="ci-b" data-k="tot">🌧 Chuva acumulada</button>
+          <button class="ci-b" data-k="max1">⚡ Pico em 1h</button>
+          <button class="ci-b" data-k="gust">💨 Rajada máx.</button>
+          <button class="ci-b" data-k="wind">🌬 Vento médio máx.</button>
+        </div>
+        <div class="ci-row">
+          <label class="ci-lb" style="flex:2">Opacidade<input type="range" id="rvOp" min="0.2" max="1" step="0.05" style="padding:0"></label>
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="rvArw"> Setas</label>
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="rvShow"> Grade</label>
+        </div>
+        <div id="rvSum"></div>
+
+        <details open>
+          <summary>Por área (polígonos carregados)</summary>
+          <div id="rvArea"></div>
+          <div class="ci-row" style="margin-top:6px"><button class="ci-b" id="rvASh">SHP por área</button><button class="ci-b" id="rvACsv">CSV por área</button></div>
         </details>
-        <button class="ci-b" id="clCsv">Exportar 48 h (CSV)</button>
+        <details>
+          <summary>Exportar grade</summary>
+          <div class="ci-row">
+            <select id="rvGeom"><option value="cel">Células (polígonos)</option><option value="pt">Pontos</option></select>
+            <button class="ci-b" id="rvShp">SHP</button><button class="ci-b" id="rvKml">KML</button><button class="ci-b" id="rvCsv">CSV</button>
+          </div>
+          <div class="ci-sub" style="margin-top:4px">SHP em WGS84. KML sai colorido pela camada ativa.</div>
+        </details>
+        <div class="ci-sub">Dados de modelo (Open-Meteo), não medição. Temporal isolado e rajada são os menos precisos — confira com pluviômetro quando der.</div>
       </div>
 
       <div class="ci-sec">
@@ -4027,7 +4079,7 @@ window._ci={parseGrid,carregaGrades,valorNoPonto,sol,CI,parseCoord,urlINPE};
 
 /* =========================================================================
    CLIMA: radar animado (RainViewer) + aproximação de chuva (ETA) +
-   previsão 48 h / janela de pulverização / chuva acumulada (Open-Meteo)
+   condições atuais / chuva acumulada (Open-Meteo)
    ========================================================================= */
 (function(){
 const el=id=>document.getElementById(id);
@@ -4036,11 +4088,10 @@ const hhmm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
 const nf=(v,c=0)=>v==null||isNaN(v)?'—':(+v).toFixed(c).replace('.',',');
 const RUMOS=['N','NE','L','SE','S','SO','O','NO'];
 const rumo=deg=>RUMOS[Math.round(((deg%360)+360)%360/45)%8];
-const LIM_PAD={vMin:3,vMax:10,raj:20,dtMin:2,dtMax:8,tMax:30,urMin:55};
 
 const CL={open:false, mk:null, picking:null, wx:null, wxPt:null,
   rv:null, frames:[], fi:0, play:null, layers:[], nowOv:null, cov:null,
-  mot:null, comp:null, corr:L.layerGroup(), selH:0, refresh:null};
+  mot:null, comp:null, corr:L.layerGroup(), refresh:null};
 
 /* ---------------- ponto ---------------- */
 function parseC(t){ return (window._ci&&window._ci.parseCoord)?window._ci.parseCoord(t):parseFloat(t); }
@@ -4067,15 +4118,8 @@ function proxied(u){
 }
 
 /* ---------------- física ---------------- */
-// bulbo úmido (Stull 2011) e Delta T
-function bulboUmido(T,RH){
-  return T*Math.atan(0.151977*Math.sqrt(RH+8.313659))+Math.atan(T+RH)-Math.atan(RH-1.676331)
-    +0.00391838*Math.pow(RH,1.5)*Math.atan(0.023101*RH)-4.686035;
-}
-const deltaT=(T,RH)=>T-bulboUmido(T,RH);
 // vento "de onde vem" (meteorológico) -> vetor PARA onde vai (km/h, leste/norte)
 function vetor(spd,dirFrom){ const a=dirFrom*Math.PI/180; return {e:-spd*Math.sin(a), n:-spd*Math.cos(a)}; }
-function lim(){ return Object.assign({},LIM_PAD,prefs.clLim||{}); }
 
 /* ---------------- Open-Meteo ---------------- */
 async function carregaTempo(){
@@ -4095,7 +4139,7 @@ async function carregaTempo(){
       W:h.wind_speed_10m,WD:h.wind_direction_10m,G:h.wind_gusts_10m,
       lv:[[h.wind_speed_850hPa,h.wind_direction_850hPa],[h.wind_speed_700hPa,h.wind_direction_700hPa],[h.wind_speed_500hPa,h.wind_direction_500hPa]],
       cur:j.current, m15:j.minutely_15?{t:j.minutely_15.time.map(x=>x*1000),P:j.minutely_15.precipitation}:null};
-    CL.wxPt=p; CL.selH=0;
+    CL.wxPt=p;
     el('clWxSt').textContent='Modelo Open-Meteo (melhor combinação para o local) · atualizado '+hhmm(new Date());
     renderTempo();
     if(CL.mot==null || CL.mot.src!=='radar') calcMovimento(); // vento em altitude como fallback
@@ -4104,36 +4148,19 @@ async function carregaTempo(){
   }
 }
 function idxAgora(){ const now=Date.now(), t=CL.wx.t; let i=0; while(i<t.length-1 && t[i+1]<=now) i++; return i; }
-function avalia(i){
-  const W=CL.wx, l=lim(), T=W.T[i], RH=W.RH[i], v=W.W[i], g=W.G[i], dt=deltaT(T,RH);
-  const chuva=(W.P[i]||0)+(W.P[i+1]||0);
-  const ruim=[], marg=[];
-  if(chuva>0.2) ruim.push('chuva prevista');
-  if(v>l.vMax+5) ruim.push('vento forte'); else if(v>l.vMax) marg.push('vento alto');
-  if(v<l.vMin) marg.push('vento fraco (inversão/deriva)');
-  if(g>l.raj+10) ruim.push('rajadas fortes'); else if(g>l.raj) marg.push('rajadas');
-  if(dt>l.dtMax+2) ruim.push('ΔT alto (evaporação)'); else if(dt>l.dtMax) marg.push('ΔT no limite');
-  if(dt<l.dtMin) marg.push('ΔT baixo (escorrimento)');
-  if(T>l.tMax+2) ruim.push('temperatura alta'); else if(T>l.tMax) marg.push('temperatura no limite');
-  if(RH<l.urMin-5) ruim.push('umidade baixa'); else if(RH<l.urMin) marg.push('umidade no limite');
-  const st=ruim.length?2:marg.length?1:0;
-  return {st,dt,motivos:ruim.concat(marg)};
-}
-const COR_ST=['#2ea043','#e6c828','#e5484d'];
 function renderTempo(){
   const W=CL.wx; if(!W) return;
   const i0=idxAgora(), now=Date.now();
   // ---- agora
   const c=W.cur||{}, T=c.temperature_2m??W.T[i0], RH=c.relative_humidity_2m??W.RH[i0];
   const v=c.wind_speed_10m??W.W[i0], d=c.wind_direction_10m??W.WD[i0], g=c.wind_gusts_10m??W.G[i0];
-  const av=avalia(i0);
   el('clNow').innerHTML=
     '<div class="cl-n"><b>'+nf(T,1)+'°C</b><span>temp.</span></div>'+
     '<div class="cl-n"><b>'+nf(RH)+'%</b><span>umidade</span></div>'+
     '<div class="cl-n"><b><span class="cl-arr" style="transform:rotate('+(d+180)+'deg)">↑</span> '+nf(v)+'</b><span>km/h de '+rumo(d)+'</span></div>'+
     '<div class="cl-n"><b>'+nf(g)+'</b><span>rajada</span></div>'+
-    '<div class="cl-n"><b>'+nf(deltaT(T,RH),1)+'</b><span>ΔT</span></div>'+
-    '<div class="cl-n"><b style="color:'+COR_ST[av.st]+'">'+['OK','Atenção','Não'][av.st]+'</b><span>pulverizar</span></div>';
+    '<div class="cl-n"><b>'+nf(c.precipitation??W.P[i0],1)+'</b><span>mm chuva agora</span></div>'+
+    '<div class="cl-n"><b>'+(W.PP[i0]!=null?nf(W.PP[i0])+'%':'—')+'</b><span>prob. chuva</span></div>';
   windArrow(v,d);
   // ---- chuva acumulada
   const soma=(a,b)=>{ let s=0; for(let i=0;i<W.t.length;i++) if(W.t[i]>a&&W.t[i]<=b) s+=W.P[i]||0; return s; };
@@ -4144,55 +4171,7 @@ function renderTempo(){
     '<div class="cl-n"><b>'+nf(soma(now-30*24*H,now),0)+'</b><span>mm 30 dias</span></div>'+
     '<div class="cl-n"><b>'+nf(soma(now,now+24*H),1)+'</b><span>mm próx. 24 h</span></div>'+
     '<div class="cl-n"><b>'+nf(soma(now,now+48*H),1)+'</b><span>mm próx. 48 h</span></div>';
-  // ---- faixa de pulverização 48 h + gráfico
-  const N=Math.min(48,W.t.length-i0-1), idx=[...Array(N)].map((_,k)=>i0+k);
-  let strip='';
-  idx.forEach((i,k)=>{
-    const a=avalia(i), dt=new Date(W.t[i]);
-    strip+='<div class="cl-h'+(k===CL.selH?' sel':'')+'" data-k="'+k+'" title="'+hhmm(dt)+'" style="background:'+COR_ST[a.st]+'">'+
-      (dt.getHours()%6===0?'<i>'+pad(dt.getHours())+'h</i>':'')+'</div>';
-  });
-  el('clStrip').innerHTML=strip;
-  el('clStrip').querySelectorAll('.cl-h').forEach(x=>x.addEventListener('click',()=>{ CL.selH=+x.dataset.k; renderTempo(); }));
-  renderGrafico(idx);
-  // ---- detalhe da hora escolhida
-  const i=idx[CL.selH]??i0, a=avalia(i), dd=new Date(W.t[i]);
-  el('clHour').innerHTML='<b>'+dd.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit'})+' '+hhmm(dd)+'</b> · '+
-    nf(W.T[i],1)+'°C · UR '+nf(W.RH[i])+'% · ΔT '+nf(a.dt,1)+' · vento '+nf(W.W[i])+' km/h de '+rumo(W.WD[i])+
-    ' (rajada '+nf(W.G[i])+') · chuva '+nf(W.P[i],1)+' mm'+(W.PP[i]!=null?' ('+nf(W.PP[i])+'%)':'')+
-    '<br><span style="color:'+COR_ST[a.st]+';font-weight:700">'+['✓ Boa para pulverizar','⚠ Atenção','✕ Não pulverizar'][a.st]+'</span>'+
-    (a.motivos.length?' — '+a.motivos.join(', '):'');
-  // ---- melhor janela nas próximas 24 h
-  let best=null, run=null;
-  idx.slice(0,24).forEach(i=>{ if(avalia(i).st===0){ if(!run) run={a:i,b:i}; else run.b=i; } else { if(run&&(!best||run.b-run.a>best.b-best.a)) best=run; run=null; } });
-  if(run&&(!best||run.b-run.a>best.b-best.a)) best=run;
-  el('clBest').innerHTML=best?'Melhor janela nas próximas 24 h: <b>'+hhmm(new Date(W.t[best.a]))+' → '+hhmm(new Date(W.t[best.b]+3600e3))+'</b> ('+(best.b-best.a+1)+' h)':
-    'Sem janela boa nas próximas 24 h com os limites atuais.';
   renderETA();
-}
-function renderGrafico(idx){
-  const W=CL.wx, Wd=340, H=120, ml=26, mr=26, mt=8, mb=18;
-  const vmax=Math.max(20,...idx.map(i=>W.G[i]||0))*1.1, pmax=Math.max(4,...idx.map(i=>W.P[i]||0))*1.15;
-  const bw=(Wd-ml-mr)/idx.length, X=k=>ml+k*bw, Yv=v=>mt+(1-v/vmax)*(H-mt-mb), Yp=p=>mt+(1-p/pmax)*(H-mt-mb);
-  let s='<svg viewBox="0 0 '+Wd+' '+H+'" xmlns="http://www.w3.org/2000/svg">';
-  const l=lim();
-  s+='<rect x="'+ml+'" width="'+(Wd-ml-mr)+'" y="'+Yv(l.vMax)+'" height="'+(Yv(l.vMin)-Yv(l.vMax))+'" fill="#2ea043" opacity=".10"/>';
-  idx.forEach((i,k)=>{ const p=W.P[i]||0; if(p>0.05) s+='<rect x="'+(X(k)+.5)+'" y="'+Yp(p)+'" width="'+(bw-1)+'" height="'+(H-mb-Yp(p))+'" fill="#3fa7ff" opacity=".75"/>'; });
-  const path=key=>idx.map((i,k)=>(k?'L':'M')+(X(k)+bw/2).toFixed(1)+' '+Yv(W[key][i]||0).toFixed(1)).join(' ');
-  s+='<path d="'+path('G')+'" fill="none" stroke="#e0a44b" stroke-width="1.2" stroke-dasharray="3 2"/>';
-  s+='<path d="'+path('W')+'" fill="none" stroke="#a4d65e" stroke-width="1.8"/>';
-  [0,10,20,30,40,60,80].filter(v=>v<vmax).forEach(v=>{ s+='<text x="'+(ml-4)+'" y="'+(Yv(v)+3)+'" fill="#93a288" font-size="8.5" text-anchor="end">'+v+'</text>'; });
-  [0,pmax/2,pmax].forEach(p=>{ s+='<text x="'+(Wd-mr+4)+'" y="'+(Yp(p)+3)+'" fill="#3fa7ff" font-size="8.5">'+nf(p,p<10?1:0)+'</text>'; });
-  idx.forEach((i,k)=>{ const d=new Date(W.t[i]); if(d.getHours()===0) s+='<line x1="'+X(k)+'" x2="'+X(k)+'" y1="'+mt+'" y2="'+(H-mb)+'" stroke="#93a288" stroke-opacity=".35"/>';
-    if(d.getHours()%6===0) s+='<text x="'+X(k)+'" y="'+(H-5)+'" fill="#93a288" font-size="8.5">'+(d.getHours()===0?d.toLocaleDateString('pt-BR',{weekday:'short'}):pad(d.getHours())+'h')+'</text>'; });
-  s+='<rect x="'+X(CL.selH)+'" y="'+mt+'" width="'+bw+'" height="'+(H-mt-mb)+'" fill="#fff" opacity=".12"/>';
-  s+='<text x="'+(ml+2)+'" y="'+(mt+8)+'" fill="#a4d65e" font-size="8.5">vento km/h</text><text x="'+(ml+52)+'" y="'+(mt+8)+'" fill="#e0a44b" font-size="8.5">rajada</text>'+
-     '<text x="'+(Wd-mr-2)+'" y="'+(mt+8)+'" fill="#3fa7ff" font-size="8.5" text-anchor="end">chuva mm/h</text></svg>';
-  el('clChart').innerHTML=s;
-  const svg=el('clChart').querySelector('svg');
-  const pick=cx=>{ const r=svg.getBoundingClientRect(), x=(cx-r.left)/r.width*Wd; const k=Math.floor((x-ml)/bw); if(k>=0&&k<idx.length&&k!==CL.selH){ CL.selH=k; renderTempo(); } };
-  svg.addEventListener('click',e=>pick(e.clientX));
-  svg.addEventListener('touchmove',e=>{ if(e.touches[0]){ pick(e.touches[0].clientX); e.preventDefault(); } },{passive:false});
 }
 function windArrow(v,d){
   const p=getPt(); if(!p) return;
@@ -4469,7 +4448,6 @@ function abre(){
     const c=prefs.clPt||prefs.ciPt||[map.getCenter().lat,map.getCenter().lng];
     el('clLat').value=(+c[0]).toFixed(6); el('clLng').value=(+c[1]).toFixed(6);
   }
-  const l=lim(); Object.keys(LIM_PAD).forEach(k=>{ const i=el('clL_'+k); if(i) i.value=l[k]; });
   if(prefs.clRdWin) el('clRdWin').value=prefs.clRdWin;
   drawPt(false); carregaTudo();
   clearInterval(CL.refresh); CL.refresh=setInterval(()=>{ if(CL.open) carregaRadar(); },10*60e3);
@@ -4510,22 +4488,369 @@ el('clRdCov').addEventListener('change',toggleCobertura);
 el('clRdCorr').addEventListener('change',desenhaCorredor);
 el('clRdWin').addEventListener('change',()=>{ prefs.clRdWin=el('clRdWin').value; savePrefs(); carregaRadar(); });
 el('clRefresh').addEventListener('click',carregaTudo);
-Object.keys(LIM_PAD).forEach(k=>{ const i=el('clL_'+k); if(i) i.addEventListener('change',()=>{
-  prefs.clLim=Object.assign(lim(),{[k]:+i.value}); savePrefs(); renderTempo(); }); });
-el('clLReset').addEventListener('click',()=>{ prefs.clLim={}; savePrefs(); Object.keys(LIM_PAD).forEach(k=>el('clL_'+k).value=LIM_PAD[k]); renderTempo(); });
-el('clCsv').addEventListener('click',()=>{
-  const W=CL.wx; if(!W) return; const i0=idxAgora(), p=getPt();
-  let csv='data;hora;temp_C;UR_%;deltaT;vento_kmh;dir_vento;rajada_kmh;chuva_mm;prob_chuva_%;pulverizacao;motivos;lat;lng\n';
-  for(let i=i0;i<Math.min(W.t.length,i0+48);i++){
-    const d=new Date(W.t[i]), a=avalia(i);
-    csv+=[d.toLocaleDateString('pt-BR'),hhmm(d),nf(W.T[i],1),nf(W.RH[i]),nf(a.dt,1),nf(W.W[i],1),rumo(W.WD[i]),nf(W.G[i],1),nf(W.P[i],1),
-      W.PP[i]??'',['OK','ATENCAO','NAO'][a.st],a.motivos.join(', '),p.lat.toFixed(6),p.lng.toFixed(6)].join(';')+'\n';
+window._cl={CL,correlaciona,calculaETA,getPt};
+})();
+
+/* =========================================================================
+   CHUVA E VENTO POR RAIO: grade de pontos (Open-Meteo) num raio de 30–45 km,
+   janela de até 5 dias, mapa de chuva acumulada / pico 1 h / rajada / vento,
+   ranking, resumo por polígono carregado e exportação SHP/KML/CSV
+   ========================================================================= */
+(function(){
+const el=id=>document.getElementById(id);
+const pad2=n=>String(n).padStart(2,'0');
+const dStr=d=>`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const todayStr=()=>dStr(new Date());
+const nowKey=()=>{const d=new Date();return `${dStr(d)}T${pad2(d.getHours())}:00`};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const fmt=(v,d=1)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtT=t=>t?`${t.slice(8,10)}/${t.slice(5,7)} ${t.slice(11,13)}h`:'';
+const DIRS=['N','NE','L','SE','S','SO','O','NO'];
+const dirName=d=>d==null?'—':DIRS[Math.round((((d%360)+360)%360)/45)%8];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const DEF={radius:40,step:4,days:5,model:'best_match',layer:'tot',arrows:true,opacity:0.7,geom:'cel',show:true};
+const RS=Object.assign({},DEF,prefs.rv||{});
+RS.end=todayStr();
+const saveRS=()=>{const {end,...k}=RS;prefs.rv=k;savePrefs()};
+let DATA=null,abort=false,busy=false;
+
+/* ---------- camadas / cores ---------- */
+const LAYERS={
+  tot:{name:'Chuva acumulada',unit:'mm',dec:1,key:'tot',stops:[[0,'#ffffff',.12],[1,'#c6e9ff'],[5,'#7cc7ff'],[10,'#2f8cff'],[20,'#1f4fe0'],[30,'#22b14c'],[50,'#ffd400'],[75,'#ff8a00'],[100,'#e8231b'],[150,'#b0179e']]},
+  max1:{name:'Pico de chuva em 1h',unit:'mm/h',dec:1,key:'max1',stops:[[0,'#ffffff',.12],[0.5,'#c6e9ff'],[2,'#7cc7ff'],[5,'#2f8cff'],[10,'#22b14c'],[20,'#ffd400'],[30,'#ff8a00'],[50,'#e8231b'],[75,'#b0179e']]},
+  gust:{name:'Rajada máxima',unit:'km/h',dec:0,key:'gust',dirKey:'gDir',stops:[[0,'#3b8bd0'],[20,'#5cc0a0'],[30,'#9be15d'],[40,'#e6e83a'],[50,'#ffb52e'],[60,'#ff6a1f'],[75,'#e3182d'],[90,'#a3127a'],[110,'#5a0c6e']]},
+  wind:{name:'Vento médio máximo',unit:'km/h',dec:0,key:'wind',dirKey:'wDir',stops:[[0,'#3b8bd0'],[10,'#5cc0a0'],[20,'#9be15d'],[30,'#e6e83a'],[40,'#ffb52e'],[50,'#ff6a1f'],[60,'#e3182d'],[75,'#a3127a']]}
+};
+function colorFor(v,stops){if(v==null||isNaN(v))return null;let s=stops[0];for(const st of stops){if(v>=st[0])s=st;else break}return {c:s[1],a:s[2]??1}}
+
+/* ---------- camadas no mapa ---------- */
+map.createPane('rvPane');map.getPane('rvPane').style.zIndex=390;   // abaixo dos polígonos da fazenda
+map.createPane('rvArw');map.getPane('rvArw').style.zIndex=605;map.getPane('rvArw').style.pointerEvents='none';
+const renderer=L.canvas({pane:'rvPane',padding:.5});
+const grp=L.layerGroup(), cellLayer=L.layerGroup().addTo(grp), arrowLayer=L.layerGroup().addTo(grp);
+const ring=L.circle([0,0],{radius:RS.radius*1000,color:'#fff',weight:2,fill:false,dashArray:'6 6',interactive:false}).addTo(grp);
+const legend=L.control({position:'bottomleft'});
+legend.onAdd=()=>{const d=L.DomUtil.create('div','rv-legend');d.id='rvLegend';L.DomEvent.disableClickPropagation(d);return d};
+let shown=false;
+function panelOpen(){return el('clPanel').classList.contains('open')}
+function syncShown(){
+  const want=panelOpen()&&RS.show;
+  if(want&&!shown){grp.addTo(map);if(DATA)legend.addTo(map);shown=true}
+  else if(!want&&shown){map.removeLayer(grp);legend.remove();shown=false}
+  if(shown){if(DATA&&!legend._map)legend.addTo(map);if(!DATA&&legend._map)legend.remove()}
+}
+new MutationObserver(()=>{updRing();syncShown()}).observe(el('clPanel'),{attributes:true,attributeFilter:['class']});
+
+function center(){const p=window._cl&&window._cl.getPt&&window._cl.getPt();if(p)return [p.lat,p.lng];const c=map.getCenter();return [c.lat,c.lng]}
+function updRing(){const c=DATA?DATA.center:center();ring.setLatLng(c);ring.setRadius((DATA?DATA.radius:RS.radius)*1000)}
+['clLat','clLng'].forEach(k=>el(k).addEventListener('change',()=>{if(!DATA)updRing()}));
+
+/* ---------- grade / período ---------- */
+function buildGrid(c){
+  const [la,lo]=c,km=+RS.step,R=+RS.radius;
+  const dLat=km/110.574,dLon=km/(111.320*Math.cos(la*Math.PI/180));
+  const n=Math.ceil(R/km),pts=[];
+  for(let i=-n;i<=n;i++)for(let j=-n;j<=n;j++){
+    const dy=i*km,dx=j*km,d=Math.hypot(dx,dy);
+    if(d<=R+1e-9)pts.push({id:pts.length+1,i,j,lat:+(la+i*dLat).toFixed(5),lon:+(lo+j*dLon).toFixed(5),dist:d,brg:(Math.atan2(dx,dy)*180/Math.PI+360)%360,hLat:dLat/2,hLon:dLon/2});
   }
-  const b=new Blob(['﻿'+csv],{type:'text/csv'}), a=document.createElement('a');
-  a.href=URL.createObjectURL(b); a.download='clima_48h_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  return pts;
+}
+function updPts(){const n=buildGrid(center()).length;el('rvPts').textContent=`${n} pontos`+(n>450?' · ~'+Math.ceil(n/450)+' min':'')}
+function period(){
+  const [y,m,d]=RS.end.split('-').map(Number);const e=new Date(y,m-1,d);const s=new Date(e);s.setDate(s.getDate()-(RS.days-1));
+  return {start:dStr(s),end:RS.end};
+}
+function updPer(){
+  const p=period(),isToday=RS.end===todayStr();
+  el('rvPer').textContent=`De ${fmtT(p.start+'T00:00')} até ${isToday?'agora ('+fmtT(nowKey())+')':fmtT(p.end+'T23:00')}`;
+}
+
+/* ---------- consulta (Open-Meteo, vários pontos por pedido) ---------- */
+let bucket=450,lastRefill=Date.now();
+async function takeTokens(n){
+  for(;;){const now=Date.now();bucket=Math.min(450,bucket+(now-lastRefill)/60000*450);lastRefill=now;
+    if(bucket>=n){bucket-=n;return}
+    el('rvStat').textContent+=' · aguardando limite da API…';await sleep(Math.ceil((n-bucket)/450*60000)+200);if(abort)return}
+}
+async function fetchBatch(batch,p,attempt=0){
+  const old=(Date.now()-new Date(p.start+'T00:00').getTime())/86400000>85;
+  const base=old?'https://historical-forecast-api.open-meteo.com/v1/forecast':'https://api.open-meteo.com/v1/forecast';
+  const q=new URLSearchParams({latitude:batch.map(b=>b.lat).join(','),longitude:batch.map(b=>b.lon).join(','),
+    hourly:'precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m',wind_speed_unit:'kmh',precipitation_unit:'mm',
+    timezone:'America/Sao_Paulo',start_date:p.start,end_date:p.end});
+  if(RS.model!=='best_match')q.set('models',RS.model);
+  let r;
+  try{r=await fetch(base+'?'+q.toString())}catch(e){if(attempt<3){await sleep(2000*(attempt+1));return fetchBatch(batch,p,attempt+1)}throw new Error('Sem conexão com a API')}
+  if(r.status===429&&attempt<5){el('rvStat').textContent='Limite da API atingido, esperando…';await sleep(15000*(attempt+1));return fetchBatch(batch,p,attempt+1)}
+  if(!r.ok){let msg='';try{msg=(await r.json()).reason}catch(e){}throw new Error(msg||('HTTP '+r.status))}
+  let j=await r.json();if(!Array.isArray(j))j=[j];return j;
+}
+function summarize(pt,h,lim){
+  const T=h.time||[],P=h.precipitation,G=h.wind_gusts_10m,W=h.wind_speed_10m,D=h.wind_direction_10m;
+  const s={t:[],r:[],g:[]};let tot=0,max1=0,max1t=null,gust=null,gustT=null,gDir=null,wind=null,wDir=null,n=0;
+  for(let k=0;k<T.length;k++){
+    if(lim&&T[k]>lim)break;
+    const r=P?P[k]:null,g=G?G[k]:null,w=W?W[k]:null,d=D?D[k]:null;
+    s.t.push(T[k]);s.r.push(r);s.g.push(g);
+    if(r!=null){tot+=r;n++;if(r>max1){max1=r;max1t=T[k]}}
+    if(g!=null&&(gust==null||g>gust)){gust=g;gustT=T[k];gDir=d}
+    if(w!=null&&(wind==null||w>wind)){wind=w;wDir=d}
+  }
+  Object.assign(pt,{ok:n>0,tot,max1,max1t,gust,gustT,gDir,wind,wDir,s});
+}
+async function consult(){
+  if(busy)return;
+  const p=period(),lim=RS.end===todayStr()?nowKey():null,c=center();
+  const pts=buildGrid(c),B=50,nb=Math.ceil(pts.length/B);
+  abort=false;busy=true;el('rvGo').disabled=true;el('rvStop').style.display='';el('rvProg').style.width='0%';
+  DATA=null;cellLayer.clearLayers();arrowLayer.clearLayers();updRing();syncShown();drawSummary();drawAreaSum();
+  let done=0,fail=0;
+  try{
+    for(let b=0;b<nb;b++){
+      if(abort)break;
+      const batch=pts.slice(b*B,(b+1)*B);
+      el('rvStat').textContent=`Lote ${b+1}/${nb} · ${done}/${pts.length} pontos`;
+      await takeTokens(batch.length);if(abort)break;
+      try{const res=await fetchBatch(batch,p);res.forEach((o,k)=>{if(batch[k]&&o&&o.hourly)summarize(batch[k],o.hourly,lim)})}
+      catch(e){fail+=batch.length;if(b===0)throw e;console.warn(e)}
+      done+=batch.length;el('rvProg').style.width=(done/pts.length*100)+'%';
+    }
+    DATA={pts,step:+RS.step,radius:+RS.radius,center:c,start:p.start,end:p.end,lim,model:RS.model,
+      dLat:pts[0].hLat*2,dLon:pts[0].hLon*2,idx:new Map(pts.map(x=>[x.i+','+x.j,x]))};
+    const ok=pts.filter(x=>x.ok).length;
+    el('rvStat').textContent=(abort?'Cancelado · ':'')+`${ok} pontos com dados`+(fail?` · ${fail} falharam`:'')+` · ${el('rvModel').selectedOptions[0].text}`;
+    if(!RS.show){RS.show=true;el('rvShow').checked=true;saveRS()}
+    updRing();syncShown();render();map.fitBounds(L.latLng(c).toBounds(DATA.radius*2000),{padding:[10,10]});
+  }catch(e){el('rvStat').textContent='Erro: '+e.message;toast('Chuva por raio: '+e.message)}
+  finally{busy=false;el('rvGo').disabled=false;el('rvStop').style.display='none'}
+}
+
+/* ---------- render ---------- */
+function render(){
+  cellLayer.clearLayers();arrowLayer.clearLayers();drawLegend();
+  if(!DATA){drawSummary();drawAreaSum();return}
+  const Ly=LAYERS[RS.layer];
+  for(const p of DATA.pts){
+    if(!p.ok)continue;const c=colorFor(p[Ly.key],Ly.stops);if(!c)continue;
+    const r=L.rectangle([[p.lat-p.hLat,p.lon-p.hLon],[p.lat+p.hLat,p.lon+p.hLon]],{renderer,stroke:false,fillColor:c.c,fillOpacity:RS.opacity*c.a});
+    r.on('click',e=>{if(window._cl&&window._cl.CL.picking)return;L.DomEvent.stop(e);openPop(p)});cellLayer.addLayer(r);
+  }
+  if(RS.arrows&&Ly.dirKey){
+    const every=DATA.step>=4?1:2;
+    for(const p of DATA.pts){
+      if(!p.ok||p[Ly.dirKey]==null||(p.i%every)||(p.j%every))continue;
+      const rot=(p[Ly.dirKey]+180)%360;
+      arrowLayer.addLayer(L.marker([p.lat,p.lon],{pane:'rvArw',interactive:false,keyboard:false,icon:L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],
+        html:`<svg viewBox="0 0 20 20" width="18" height="18" style="display:block;transform:rotate(${rot}deg)"><path d="M10 1.5 15.5 11 11 9.3V18.5H9V9.3L4.5 11Z" fill="#fff" stroke="#000" stroke-width=".9" stroke-linejoin="round"/></svg>`})}));
+    }
+  }
+  drawSummary();drawAreaSum();
+}
+function drawLegend(){
+  const box=el('rvLegend');if(!box)return;
+  const Ly=LAYERS[RS.layer],st=Ly.stops;let h=`<div class="lt">${Ly.name} (${Ly.unit})</div>`;
+  const f=v=>fmt(v,v%1?1:0);
+  st.forEach((s,i)=>{const nx=st[i+1];h+=`<div><i style="background:${s[1]};opacity:${s[2]??1}"></i>${nx?(i===0?'&lt; '+f(nx[0]):f(s[0])+' – '+f(nx[0])):'≥ '+f(s[0])}</div>`});
+  if(Ly.dirKey&&RS.arrows)h+=`<div style="color:var(--muted);font-size:10px;margin-top:3px">Seta = para onde o vento sopra</div>`;
+  box.innerHTML=h;
+}
+const _onAdd=legend.onAdd;legend.onAdd=m=>{const d=_onAdd(m);setTimeout(drawLegend,0);return d};
+
+function chart(p){
+  const s=p.s,n=s.t.length;if(!n)return'';
+  const W=260,H=80,pd=14,bw=W/n,mr=Math.max(1,...s.r.map(x=>x||0)),mg=Math.max(10,...s.g.map(x=>x||0));
+  let bars='',tk='';
+  s.r.forEach((r,i)=>{if(r>0){const h=r/mr*(H-pd-4);bars+=`<rect x="${(i*bw).toFixed(1)}" y="${(H-pd-h).toFixed(1)}" width="${Math.max(bw-.3,.6).toFixed(1)}" height="${h.toFixed(1)}" fill="#3fa7ff"/>`}});
+  const pl=s.g.map((g,i)=>g==null?null:`${(i*bw+bw/2).toFixed(1)},${(H-pd-g/mg*(H-pd-4)).toFixed(1)}`).filter(Boolean).join(' ');
+  s.t.forEach((t,i)=>{if(t.endsWith('T00:00'))tk+=`<line x1="${(i*bw).toFixed(1)}" x2="${(i*bw).toFixed(1)}" y1="0" y2="${H-pd}" stroke="#ffffff30"/><text x="${(i*bw+2).toFixed(1)}" y="${H-3}" font-size="9" fill="#93a288">${t.slice(8,10)}/${t.slice(5,7)}</text>`});
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%">${tk}${bars}<polyline points="${pl}" fill="none" stroke="#e0a44b" stroke-width="1.3"/></svg>
+  <div class="rv-ck"><span style="color:#3fa7ff">■ chuva/h (máx ${fmt(mr)} mm)</span> &nbsp;<span style="color:#e0a44b">— rajada (máx ${fmt(mg,0)} km/h)</span></div>`;
+}
+function openPop(p){
+  const h=`<div class="rv-pp"><b>Ponto #${p.id}</b> <span class="rv-ck">· ${fmt(p.dist)} km ${dirName(p.brg)} do centro</span>
+  <table>
+  <tr><td>Chuva acumulada</td><td>${fmt(p.tot)} mm</td></tr>
+  <tr><td>Pico em 1h</td><td>${fmt(p.max1)} mm ${p.max1>0?'<span class="rv-ck">('+fmtT(p.max1t)+')</span>':''}</td></tr>
+  <tr><td>Rajada máx.</td><td>${fmt(p.gust,0)} km/h ${p.gust!=null?'<span class="rv-ck">de '+dirName(p.gDir)+' · '+fmtT(p.gustT)+'</span>':''}</td></tr>
+  <tr><td>Vento médio máx.</td><td>${fmt(p.wind,0)} km/h <span class="rv-ck">de ${dirName(p.wDir)}</span></td></tr>
+  </table>${chart(p)}<div class="rv-ck" style="margin-top:4px">${p.lat}, ${p.lon}</div></div>`;
+  L.popup({maxWidth:290}).setLatLng([p.lat,p.lon]).setContent(h).openOn(map);
+}
+function drawSummary(){
+  const box=el('rvSum');
+  if(!DATA){box.innerHTML='';return}
+  const ok=DATA.pts.filter(p=>p.ok);if(!ok.length){box.innerHTML='<div class="ci-sub">Nenhum ponto retornou dados.</div>';return}
+  const a=DATA.step*DATA.step,mx=k=>ok.reduce((m,p)=>p[k]!=null&&p[k]>m?p[k]:m,0),area=(k,t)=>ok.filter(p=>p[k]!=null&&p[k]>=t).length*a;
+  const mean=ok.reduce((s,p)=>s+p.tot,0)/ok.length,Ly=LAYERS[RS.layer];
+  const top=ok.filter(p=>p[Ly.key]!=null).sort((x,y)=>y[Ly.key]-x[Ly.key]).slice(0,10);
+  let h=`<div class="ci-sub">${fmtT(DATA.start+'T00:00')} → ${DATA.lim?fmtT(DATA.lim):fmtT(DATA.end+'T23:00')} · ${ok.length} pts · grade ${DATA.step} km · raio ${DATA.radius} km</div>
+  <div class="cl-grid" style="grid-template-columns:repeat(2,1fr)">
+   <div class="cl-n"><b>${fmt(mx('tot'))}</b><span>mm · maior acumulado</span></div>
+   <div class="cl-n"><b>${fmt(mean)}</b><span>mm · média da área</span></div>
+   <div class="cl-n"><b>${fmt(mx('max1'))}</b><span>mm/h · maior pico 1h</span></div>
+   <div class="cl-n"><b>${fmt(mx('gust'),0)}</b><span>km/h · maior rajada</span></div>
+   <div class="cl-n"><b>${fmt(area('tot',50),0)}</b><span>km² com ≥ 50 mm</span></div>
+   <div class="cl-n"><b>${fmt(area('max1',20),0)}</b><span>km² com pico ≥ 20 mm/h</span></div>
+   <div class="cl-n"><b>${fmt(area('gust',60),0)}</b><span>km² rajada ≥ 60 km/h</span></div>
+   <div class="cl-n"><b>${fmt(area('gust',80),0)}</b><span>km² rajada ≥ 80 km/h</span></div>
+  </div>
+  <div class="ci-tit" style="margin-top:4px">Mais afetados — ${Ly.name.toLowerCase()}</div><ul class="rv-rank">`;
+  top.forEach((p,i)=>{const c=colorFor(p[Ly.key],Ly.stops);h+=`<li data-id="${p.id}"><i style="background:${c.c}"></i><b>${i+1}.</b> ${fmt(p[Ly.key],Ly.dec)} ${Ly.unit}<em>${fmt(p.dist)} km ${dirName(p.brg)}</em></li>`});
+  box.innerHTML=h+'</ul>';
+  box.querySelectorAll('.rv-rank li').forEach(li=>li.onclick=()=>{const p=DATA.pts[li.dataset.id-1];map.setView([p.lat,p.lon],Math.max(map.getZoom(),12));openPop(p)});
+}
+
+/* ---------- por polígono (usa os polígonos já carregados no visualizador) ---------- */
+function nearestCell(lat,lon){if(!DATA)return null;const i=Math.round((lat-DATA.center[0])/DATA.dLat),j=Math.round((lon-DATA.center[1])/DATA.dLon);return DATA.idx.get(i+','+j)||null}
+const toRing=r=>r.map(p=>[p.lng,p.lat]);
+function fRings(f){return [toRing(f.geom.ring),...(f.geom.holes||[]).map(toRing)]}
+function inside(x,y,rings){let c=false;for(const r of rings)for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c}return c}
+const SMP=new WeakMap();
+function samples(f){
+  const g=f.geom;if(SMP.has(g))return SMP.get(g);
+  const rings=fRings(f),all=rings.flat();let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,out=[];
+  all.forEach(c=>{if(c[0]<x0)x0=c[0];if(c[0]>x1)x1=c[0];if(c[1]<y0)y0=c[1];if(c[1]>y1)y1=c[1]});
+  const N=30;for(let a=0;a<N;a++)for(let b=0;b<N;b++){const x=x0+(a+.5)*(x1-x0)/N,y=y0+(b+.5)*(y1-y0)/N;if(inside(x,y,rings))out.push([x,y])}
+  if(!out.length)out=[[(x0+x1)/2,(y0+y1)/2]];
+  SMP.set(g,out);return out;
+}
+function areaStats(f){
+  let n=0,out=0,tot=0,totMax=null,max1=null,gust=null;const cells=new Set();
+  for(const [x,y] of samples(f)){const c=nearestCell(y,x);if(!c||!c.ok){out++;continue}n++;tot+=c.tot;cells.add(c.id);
+    totMax=totMax==null?c.tot:Math.max(totMax,c.tot);max1=max1==null?c.max1:Math.max(max1,c.max1);if(c.gust!=null)gust=gust==null?c.gust:Math.max(gust,c.gust)}
+  if(!n)return{none:true};
+  return{n,tot:tot/n,totMax,max1,gust,cells:cells.size,partial:out>0};
+}
+function polys(){return features.filter(f=>f.type==='polygon'&&f.visible!==false&&f.geom&&f.geom.ring&&f.geom.ring.length>2)}
+function areaRows(){
+  return polys().map(f=>({f,st:DATA?areaStats(f):null})).sort((a,b)=>((b.st&&!b.st.none&&b.st.tot)||-1)-((a.st&&!a.st.none&&a.st.tot)||-1));
+}
+function statsHtml(f){
+  const st=areaStats(f);
+  if(st.none)return '<div class="rv-ck">Fora do raio consultado.</div>';
+  return `<table><tr><td>Chuva média</td><td>${fmt(st.tot)} mm</td></tr><tr><td>Chuva máx.</td><td>${fmt(st.totMax)} mm</td></tr><tr><td>Pico em 1h</td><td>${fmt(st.max1)} mm</td></tr><tr><td>Rajada máx.</td><td>${fmt(st.gust,0)} km/h</td></tr></table>
+    <div class="rv-ck">${st.cells} célula(s) da grade${st.partial?' · parte fora do raio':''}</div>`;
+}
+let AR=[];
+function drawAreaSum(){
+  const box=el('rvArea');AR=areaRows();
+  if(!AR.length){box.innerHTML='<div class="ci-sub">Carregue os polígonos da fazenda (KMZ/KML/SHP) no visualizador pra ver a chuva por talhão.</div>';return}
+  if(!DATA){box.innerHTML=`<div class="ci-sub">${AR.length} polígono(s) visível(is). Faça a consulta pra calcular.</div>`;return}
+  const show=AR.slice(0,60);
+  let h=`<table class="rv-atab"><tr><th>Área</th><th>ha</th><th>Média mm</th><th>Pico 1h</th><th>Rajada</th></tr>`;
+  show.forEach((r,i)=>{const s=r.st,c=s&&!s.none?colorFor(s.tot,LAYERS.tot.stops):null;
+    h+=`<tr data-r="${i}"><td title="${esc(r.f.name)}"><i style="background:${r.f.color}"></i>${esc(r.f.name)}</td><td>${fmt(r.f.area/1e4,1)}</td>`+
+      (s&&!s.none?`<td><b style="color:${c.a<1?'var(--text)':c.c}">${fmt(s.tot)}</b></td><td>${fmt(s.max1)}</td><td>${fmt(s.gust,0)}</td>`:`<td colspan="3" style="color:var(--muted)">fora do raio</td>`)+`</tr>`});
+  h+='</table>'+(AR.length>60?`<div class="ci-sub">Mostrando 60 de ${AR.length} — o SHP/CSV leva todas.</div>`:'')+'<div class="ci-sub">Pico 1h em mm, rajada em km/h (máximos dentro da área).</div>';
+  box.innerHTML=h;
+  box.querySelectorAll('tr[data-r]').forEach(tr=>tr.onclick=()=>{const f=show[tr.dataset.r].f;
+    map.fitBounds(f.layer.getBounds(),{padding:[30,30],maxZoom:15});setTimeout(()=>f.layer.openPopup(f.layer.getBounds().getCenter()),250)});
+}
+// junta o bloco de chuva/vento no popup dos polígonos do visualizador
+map.on('popupopen',e=>{
+  if(!DATA)return;const src=e.popup._source;if(!src)return;
+  const f=features.find(x=>x.layer===src);if(!f||f.type!=='polygon')return;
+  const c=e.popup.getElement()&&e.popup.getElement().querySelector('.leaflet-popup-content');if(!c||c.querySelector('.rv-pp'))return;
+  const d=document.createElement('div');d.className='rv-pp rv-inpop';
+  d.innerHTML=`<div class="rv-pt">🌧 Chuva e vento · ${fmtT(DATA.start+'T00:00')} → ${DATA.lim?fmtT(DATA.lim):fmtT(DATA.end+'T23:00')}</div>`+statsHtml(f);
+  const first=c.firstElementChild;if(first)first.insertBefore(d,first.children[1]||null);else c.appendChild(d);
+  e.popup.update();
 });
-window._cl={CL,deltaT,correlaciona,calculaETA,avalia};
+// atualiza a tabela quando polígonos entram/saem
+let arT=null;const fl=el('featList');if(fl)new MutationObserver(()=>{clearTimeout(arT);arT=setTimeout(drawAreaSum,400)}).observe(fl,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+
+/* ---------- exportação ---------- */
+const FIELDS_CELL=[{n:'ID',t:'N',l:6,d:0},{n:'LAT',t:'N',l:11,d:6},{n:'LON',t:'N',l:11,d:6},{n:'DIST_KM',t:'N',l:6,d:1},{n:'RUMO',t:'C',l:2},
+ {n:'CHUVA_MM',t:'N',l:7,d:1},{n:'MAX1H_MM',t:'N',l:6,d:1},{n:'HORA_MAX1H',t:'C',l:9},{n:'RAJADA_KH',t:'N',l:6,d:1},{n:'DIR_RAJ',t:'N',l:4,d:0},
+ {n:'ORIG_RAJ',t:'C',l:2},{n:'HORA_RAJ',t:'C',l:9},{n:'VENTO_KH',t:'N',l:6,d:1}];
+const FIELDS_AREA=[{n:'NOME',t:'C',l:40},{n:'ARQUIVO',t:'C',l:40},{n:'AREA_HA',t:'N',l:10,d:2},{n:'CHUVA_MED',t:'N',l:7,d:1},{n:'CHUVA_MAX',t:'N',l:7,d:1},
+  {n:'MAX1H_MM',t:'N',l:6,d:1},{n:'RAJADA_KH',t:'N',l:6,d:1},{n:'N_CELULAS',t:'N',l:5,d:0}];
+function rows(){return DATA.pts.filter(p=>p.ok).map(p=>({_p:p,ID:p.id,LAT:p.lat,LON:p.lon,DIST_KM:p.dist,RUMO:dirName(p.brg),CHUVA_MM:p.tot,MAX1H_MM:p.max1,HORA_MAX1H:p.max1>0?fmtT(p.max1t):'',
+  RAJADA_KH:p.gust,DIR_RAJ:p.gDir,ORIG_RAJ:p.gust!=null?dirName(p.gDir):'',HORA_RAJ:fmtT(p.gustT),VENTO_KH:p.wind}))}
+const cellRing=p=>{const x0=p.lon-p.hLon,x1=p.lon+p.hLon,y0=p.lat-p.hLat,y1=p.lat+p.hLat;return [[x0,y0],[x0,y1],[x1,y1],[x1,y0],[x0,y0]]};
+const shoe=r=>{let s=0;for(let i=0,j=r.length-1;i<r.length;j=i++)s+=r[j][0]*r[i][1]-r[i][0]*r[j][1];return s/2};
+function orient(rings){return rings.map((r,i)=>{const c=r.slice();const a=c[0],b=c[c.length-1];if(a[0]!==b[0]||a[1]!==b[1])c.push(a);const cw=shoe(c)<0;return (i===0?cw:!cw)?c:c.reverse()})}
+function writeShp(feats,type){
+  const recs=feats.map(f=>{
+    if(type===1){const b=new ArrayBuffer(20),v=new DataView(b);v.setInt32(0,1,true);v.setFloat64(4,f[0],true);v.setFloat64(12,f[1],true);return{b,bb:[f[0],f[1],f[0],f[1]]}}
+    const rings=Array.isArray(f[0][0])?f:[f],np=rings.length,all=rings.flat(),n=all.length;
+    const b=new ArrayBuffer(44+4*np+16*n),v=new DataView(b);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    all.forEach(c=>{if(c[0]<x0)x0=c[0];if(c[0]>x1)x1=c[0];if(c[1]<y0)y0=c[1];if(c[1]>y1)y1=c[1]});const bb=[x0,y0,x1,y1];
+    v.setInt32(0,5,true);bb.forEach((x,i)=>v.setFloat64(4+8*i,x,true));v.setInt32(36,np,true);v.setInt32(40,n,true);
+    let acc=0;rings.forEach((r,i)=>{v.setInt32(44+4*i,acc,true);acc+=r.length});const p0=44+4*np;
+    all.forEach((c,i)=>{v.setFloat64(p0+16*i,c[0],true);v.setFloat64(p0+16*i+8,c[1],true)});return{b,bb}});
+  const bb=recs.reduce((a,r)=>[Math.min(a[0],r.bb[0]),Math.min(a[1],r.bb[1]),Math.max(a[2],r.bb[2]),Math.max(a[3],r.bb[3])],[Infinity,Infinity,-Infinity,-Infinity]);
+  const shpLen=100+recs.reduce((s,r)=>s+8+r.b.byteLength,0),shxLen=100+8*recs.length;
+  const shp=new ArrayBuffer(shpLen),shx=new ArrayBuffer(shxLen),vs=new DataView(shp),vx=new DataView(shx),u8=new Uint8Array(shp);
+  const hdr=(v,len)=>{v.setInt32(0,9994,false);v.setInt32(24,len/2,false);v.setInt32(28,1000,true);v.setInt32(32,type,true);bb.forEach((x,i)=>v.setFloat64(36+8*i,x,true))};
+  hdr(vs,shpLen);hdr(vx,shxLen);
+  let o=100;recs.forEach((r,k)=>{const L2=r.b.byteLength/2;vx.setInt32(100+8*k,o/2,false);vx.setInt32(104+8*k,L2,false);
+    vs.setInt32(o,k+1,false);vs.setInt32(o+4,L2,false);u8.set(new Uint8Array(r.b),o+8);o+=8+r.b.byteLength});
+  return{shp,shx};
+}
+function writeDbf(rs,FIELDS){
+  const hl=32+32*FIELDS.length+1,rl=1+FIELDS.reduce((a,f)=>a+f.l,0),buf=new Uint8Array(hl+rl*rs.length+1),v=new DataView(buf.buffer),d=new Date();
+  buf[0]=3;buf[1]=d.getFullYear()-1900;buf[2]=d.getMonth()+1;buf[3]=d.getDate();v.setUint32(4,rs.length,true);v.setUint16(8,hl,true);v.setUint16(10,rl,true);
+  FIELDS.forEach((f,i)=>{const o=32+32*i;for(let k=0;k<f.n.length;k++)buf[o+k]=f.n.charCodeAt(k);buf[o+11]=f.t.charCodeAt(0);buf[o+16]=f.l;buf[o+17]=f.d||0});
+  buf[hl-1]=0x0D;let o=hl;
+  rs.forEach(r=>{buf[o++]=0x20;FIELDS.forEach(f=>{const val=r[f.n];let s;
+    if(f.t==='N'){s=(val==null||isNaN(val))?'':Number(val).toFixed(f.d||0);s=s.padStart(f.l,' ').slice(-f.l)}
+    else s=String(val??'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'?').slice(0,f.l).padEnd(f.l,' ');
+    for(let k=0;k<f.l;k++)buf[o++]=s.charCodeAt(k)&0xff})});
+  buf[o]=0x1A;return buf;
+}
+const PRJ='GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+const baseName=()=>`chuva_vento_${DATA.start.replace(/-/g,'')}_${DATA.end.replace(/-/g,'')}_R${DATA.radius}km`;
+const need=()=>{if(!DATA){toast('Faça a consulta de chuva por raio primeiro.');return false}return true};
+async function zipShp(nm,shp,shx,dbf){const z=new JSZip();z.file(nm+'.shp',shp);z.file(nm+'.shx',shx);z.file(nm+'.dbf',dbf);z.file(nm+'.prj',PRJ);z.file(nm+'.cpg','UTF-8');
+  baixar(await z.generateAsync({type:'blob',mimeType:'application/zip'}),nm+'.zip')}
+const nfc=(v,d)=>v==null||isNaN(v)?'':Number(v).toFixed(d).replace('.',',');
+el('rvShp').onclick=async()=>{if(!need())return;const rs=rows(),cel=RS.geom==='cel';
+  const {shp,shx}=writeShp(rs.map(r=>cel?cellRing(r._p):[r.LON,r.LAT]),cel?5:1);
+  zipShp(baseName()+(cel?'_celulas':'_pontos'),shp,shx,writeDbf(rs,FIELDS_CELL))};
+const kmlColor=(hex,a)=>{const h=hex.replace('#','');return pad2(Math.round(a*255).toString(16))+h.slice(4,6)+h.slice(2,4)+h.slice(0,2)};
+el('rvKml').onclick=()=>{if(!need())return;const Ly=LAYERS[RS.layer];let pm='';
+  rows().forEach(r=>{const p=r._p,c=colorFor(p[Ly.key],Ly.stops);if(!c)return;
+    const ed=FIELDS_CELL.map(f=>`<Data name="${f.n}"><value>${esc(r[f.n]==null?'':(f.t==='N'?Number(r[f.n]).toFixed(f.d):r[f.n]))}</value></Data>`).join('');
+    const geo=RS.geom==='cel'?`<Polygon><outerBoundaryIs><LinearRing><coordinates>${cellRing(p).map(c=>c[0]+','+c[1]+',0').join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`:`<Point><coordinates>${p.lon},${p.lat},0</coordinates></Point>`;
+    pm+=`<Placemark><name>${fmt(p[Ly.key],Ly.dec)} ${Ly.unit}</name><Style><IconStyle><color>${kmlColor(c.c,1)}</color><scale>0.6</scale></IconStyle><LabelStyle><scale>0</scale></LabelStyle><LineStyle><width>0</width></LineStyle><PolyStyle><color>${kmlColor(c.c,0.65)}</color><outline>0</outline></PolyStyle></Style><ExtendedData>${ed}</ExtendedData>${geo}</Placemark>`});
+  const k=`<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(Ly.name+' '+fmtT(DATA.start+'T00:00')+' a '+(DATA.lim?fmtT(DATA.lim):fmtT(DATA.end+'T23:00')))}</name>${pm}</Document></kml>`;
+  baixar(new Blob([k],{type:'application/vnd.google-earth.kml+xml'}),baseName()+'_'+RS.layer+'.kml')};
+el('rvCsv').onclick=()=>{if(!need())return;
+  let c=FIELDS_CELL.map(f=>f.n).join(';')+'\n';
+  rows().forEach(r=>{c+=FIELDS_CELL.map(f=>f.t==='N'?nfc(r[f.n],f.d):r[f.n]).join(';')+'\n'});
+  baixar(new Blob(['﻿'+c],{type:'text/csv'}),baseName()+'.csv')};
+function areaExportRows(){return areaRows().map(r=>{const s=r.st&&!r.st.none?r.st:{};return{_f:r.f,NOME:r.f.name,ARQUIVO:r.f.fileName,AREA_HA:r.f.area/1e4,CHUVA_MED:s.tot,CHUVA_MAX:s.totMax,MAX1H_MM:s.max1,RAJADA_KH:s.gust,N_CELULAS:s.cells}})}
+el('rvASh').onclick=()=>{if(!need())return;const rs=areaExportRows();if(!rs.length)return toast('Nenhum polígono visível.');
+  const {shp,shx}=writeShp(rs.map(r=>orient(fRings(r._f))),5);zipShp(baseName()+'_por_area',shp,shx,writeDbf(rs,FIELDS_AREA))};
+el('rvACsv').onclick=()=>{if(!need())return;const rs=areaExportRows();if(!rs.length)return toast('Nenhum polígono visível.');
+  let c=FIELDS_AREA.map(f=>f.n).join(';')+'\n';rs.forEach(r=>{c+=FIELDS_AREA.map(f=>f.t==='N'?nfc(r[f.n],f.d):String(r[f.n]??'').replace(/;/g,',')).join(';')+'\n'});
+  baixar(new Blob(['﻿'+c],{type:'text/csv'}),baseName()+'_por_area.csv')};
+
+/* ---------- UI ---------- */
+el('rvR').value=RS.radius;el('rvROut').textContent=RS.radius+' km';
+el('rvR').oninput=e=>{RS.radius=+e.target.value;el('rvROut').textContent=RS.radius+' km';if(!DATA)updRing();updPts();saveRS()};
+el('rvStep').value=RS.step;el('rvStep').onchange=e=>{RS.step=+e.target.value;updPts();saveRS()};
+el('rvEnd').value=RS.end;el('rvEnd').max=todayStr();
+el('rvEnd').onchange=e=>{let v=e.target.value||todayStr();if(v>todayStr())v=todayStr();RS.end=v;e.target.value=v;updPer()};
+el('rvDays').value=RS.days;el('rvDays').onchange=e=>{RS.days=+e.target.value;updPer();saveRS()};
+el('rvModel').value=RS.model;el('rvModel').onchange=e=>{RS.model=e.target.value;saveRS()};
+el('rvOp').value=RS.opacity;el('rvOp').oninput=e=>{RS.opacity=+e.target.value;render();saveRS()};
+el('rvArw').checked=RS.arrows;el('rvArw').onchange=e=>{RS.arrows=e.target.checked;render();saveRS()};
+el('rvShow').checked=RS.show;el('rvShow').onchange=e=>{RS.show=e.target.checked;syncShown();saveRS()};
+el('rvGeom').value=RS.geom;el('rvGeom').onchange=e=>{RS.geom=e.target.value;saveRS()};
+const segBtns=[...el('rvSeg').querySelectorAll('button')];
+const setLayer=k=>{RS.layer=k;segBtns.forEach(b=>b.classList.toggle('on',b.dataset.k===k));render();saveRS()};
+segBtns.forEach(b=>b.onclick=()=>setLayer(b.dataset.k));
+el('rvGo').onclick=()=>{updPer();consult()};
+el('rvStop').onclick=()=>{abort=true;toast('Cancelando…',1500)};
+el('rvClear').onclick=()=>{DATA=null;cellLayer.clearLayers();arrowLayer.clearLayers();el('rvStat').textContent='';el('rvProg').style.width='0%';updRing();syncShown();drawSummary();drawAreaSum()};
+el('clBtn').addEventListener('click',()=>setTimeout(()=>{updPts();updPer();if(!DATA)updRing()},50));
+segBtns.forEach(b=>b.classList.toggle('on',b.dataset.k===RS.layer));
+updPer();drawAreaSum();
+window._rv={get DATA(){return DATA},consult,areaStats,buildGrid};
 })();
 
 /* =========================================================================
