@@ -516,6 +516,8 @@ body.sidebar-collapsed #sidebar {
 /* ---- Chuva e vento por raio ---- */
 .rv-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #clPanel .rv-seg button.ci-b{white-space:normal;font-size:.72rem}
+.ow-bar{height:8px;border-radius:4px;margin:4px 0 2px}
+.ow-esc{display:flex;justify-content:space-between;font-size:.64rem;color:var(--muted);font-family:var(--mono,monospace)}
 .rv-bar{height:5px;background:var(--panel);border-radius:4px;overflow:hidden}
 .rv-bar i{display:block;height:100%;width:0;background:#3fa7ff;transition:width .2s}
 .rv-rank{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
@@ -854,6 +856,40 @@ body.sidebar-collapsed #sidebar {
         </div>
         <button class="ci-b" id="clMark">📍 Marcar chuva no mapa (estimar chegada)</button>
         <div class="ci-sub" id="clRdSt"></div>
+      </div>
+
+      <div class="ci-card">
+        <div class="ci-tit">Radar REDEMET (radares do Brasil · DECEA)</div>
+        <div class="ci-row">
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="rmOn"> Mostrar</label>
+          <label class="ci-lb">Produto<select id="rmTipo">
+            <option value="maxcappi">MaxCAPPI (400 km)</option>
+            <option value="03km">CAPPI 3 km (250 km)</option>
+            <option value="05km">CAPPI 5 km (250 km)</option>
+            <option value="07km">CAPPI 7 km (250 km)</option>
+            <option value="10km">CAPPI 10 km (250 km)</option></select></label>
+        </div>
+        <label class="ci-lb">Chave da API REDEMET<input id="rmKey" class="mono" placeholder="cole aqui a sua api_key" autocomplete="off" spellcheck="false"></label>
+        <div class="ci-row">
+          <button class="ci-b" id="rmPlay" style="flex:0 0 40px">▶</button>
+          <input type="range" id="rmSl" min="0" max="0" value="0" style="padding:0">
+        </div>
+        <div class="ci-sub" id="rmT" style="text-align:center">—</div>
+        <label class="ci-lb">Opacidade<input type="range" id="rmOpa" min="20" max="100" value="75" style="padding:0"></label>
+        <div class="ci-sub" id="rmSt">Precisa de chave grátis (cadastro no site da REDEMET/DECEA). A chave fica só neste aparelho.</div>
+      </div>
+
+      <div class="ci-card">
+        <div class="ci-tit">Camadas OpenWeatherMap (modelo, mundo todo)</div>
+        <div class="ci-row" style="flex-wrap:wrap">
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="owWind"> Vento</label>
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="owRain"> Chuva</label>
+          <label class="ci-sub" style="flex:0 0 auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="owCloud"> Nuvens</label>
+        </div>
+        <label class="ci-lb">Chave da API OpenWeatherMap<input id="owKey" class="mono" placeholder="cole aqui a sua appid" autocomplete="off" spellcheck="false"></label>
+        <label class="ci-lb">Opacidade<input type="range" id="owOpa" min="20" max="100" value="70" style="padding:0"></label>
+        <div id="owLeg" class="ci-sub"></div>
+        <div class="ci-sub" id="owSt">Chave grátis em openweathermap.org (pode levar até 2 h pra ativar). A chave fica só neste aparelho.</div>
       </div>
 
       <div class="ci-card">
@@ -5113,7 +5149,11 @@ function windArrow(v,d){
 
 /* ---------------- Radar (RainViewer) ---------------- */
 const RV_COLOR=2; // Universal Blue (único esquema liberado no plano grátis)
-const RV_ZMAX=12;  // resolução do radar ~1 km: acima disso só pesa (e no iPhone derruba a página)
+const RV_ZMAX=12;
+// RainViewer (desde 01/2026): plano grátis só entrega tiles até o zoom 7. Pedir z8 devolvia erro
+// em parte dos tiles -> nuvem "cortada" em quadrados. Com 7 o Leaflet amplia os tiles do z7.
+const RV_ZNAT=7;
+const RV_VAZIO='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 async function carregaRadar(){
   el('clRdSt').textContent='Carregando radar…';
   try{
@@ -5126,7 +5166,7 @@ async function carregaRadar(){
   const sel=past.slice(-nq);
   sel.forEach(f=>{
     const lyr=L.tileLayer(CL.rv.host+f.path+'/512/{z}/{x}/{y}/'+RV_COLOR+'/1_0.png',
-      {tileSize:512, zoomOffset:-1, maxNativeZoom:8, maxZoom:RV_ZMAX, opacity:0, zIndex:360, className:'cl-rv', attribution:'Radar RainViewer',
+      {tileSize:512, zoomOffset:-1, maxNativeZoom:RV_ZNAT, maxZoom:RV_ZMAX, errorTileUrl:RV_VAZIO, opacity:0, zIndex:360, className:'cl-rv', attribution:'Radar RainViewer',
        updateWhenZooming:false, keepBuffer:0});
     lyr.addTo(map);
     CL.frames.push({t:f.time*1000, kind:'past', lyr});
@@ -5167,7 +5207,7 @@ function toggleCobertura(){
   if(CL.cov){ map.removeLayer(CL.cov); CL.cov=null; }
   if(!el('clRdCov').checked || !CL.rv) return;
   CL.cov=L.tileLayer(CL.rv.host+'/v2/coverage/0/512/{z}/{x}/{y}/0/0_0.png',
-    {tileSize:512,zoomOffset:-1,maxNativeZoom:8,maxZoom:RV_ZMAX,opacity:.35,zIndex:355,updateWhenZooming:false,keepBuffer:0}).addTo(map);
+    {tileSize:512,zoomOffset:-1,maxNativeZoom:RV_ZNAT,maxZoom:RV_ZMAX,errorTileUrl:RV_VAZIO,opacity:.35,zIndex:355,updateWhenZooming:false,keepBuffer:0}).addTo(map);
 }
 
 // ---- leitura de pixels (precisa CORS; tenta direto e depois pelo Worker)
@@ -5370,7 +5410,7 @@ function etaManual(ll){
 }
 
 /* ---------------- painel ---------------- */
-function carregaTudo(){ carregaTempo(); carregaRadar(); }
+function carregaTudo(){ carregaTempo(); carregaRadar(); carregaRedemet(); owAplica(); }
 function abre(){
   if(el('ciPanel').classList.contains('open')) el('ciClose').click();
   CL.open=true; el('clPanel').classList.add('open'); el('clBtn').classList.add('on');
@@ -5379,12 +5419,13 @@ function abre(){
     el('clLat').value=(+c[0]).toFixed(6); el('clLng').value=(+c[1]).toFixed(6);
   }
   if(prefs.clRdWin) el('clRdWin').value=prefs.clRdWin;
+  extrasRestaura();
   drawPt(false); carregaTudo();
-  clearInterval(CL.refresh); CL.refresh=setInterval(()=>{ if(CL.open) carregaRadar(); },10*60e3);
+  clearInterval(CL.refresh); CL.refresh=setInterval(()=>{ if(CL.open){ carregaRadar(); carregaRedemet(); } },10*60e3);
 }
 function fecha(){
   CL.open=false; el('clPanel').classList.remove('open'); el('clBtn').classList.remove('on');
-  clearInterval(CL.refresh); limpaRadar(); CL.corr.clearLayers();
+  clearInterval(CL.refresh); limpaRadar(); rmLimpa(); owAplica(); CL.corr.clearLayers();
   if(CL.cov){ map.removeLayer(CL.cov); CL.cov=null; }
   ['mk','wmk'].forEach(k=>{ if(CL[k]){ map.removeLayer(CL[k]); CL[k]=null; } });
   CL.picking=null;
@@ -5416,7 +5457,156 @@ el('clRdOpa').addEventListener('input',mostraQuadro);
 map.on('zoomend',()=>{ if(CL.open && CL.frames.length) mostraQuadro(); });
 el('clRdCov').addEventListener('change',toggleCobertura);
 el('clRdCorr').addEventListener('change',desenhaCorredor);
-el('clRdWin').addEventListener('change',()=>{ prefs.clRdWin=el('clRdWin').value; savePrefs(); carregaRadar(); });
+el('clRdWin').addEventListener('change',()=>{ prefs.clRdWin=el('clRdWin').value; savePrefs(); carregaRadar(); carregaRedemet(); });
+
+/* ---------------- Radar REDEMET (DECEA) ----------------
+   GET https://api-redemet.decea.mil.br/produtos/radar/{tipo}?api_key=...&anima=N
+   Cada radar vem com o PNG (path) e os limites lat_min/lat_max/lon_min/lon_max.
+   Se faltar limite, calcula pelo centro + raio do produto. */
+const RM={frames:[], fi:0, play:null, ovs:[], t:null};
+function rmLeLista(j){
+  const out=[];
+  (function walk(o){
+    if(!o) return;
+    if(Array.isArray(o)){ o.forEach(walk); return; }
+    if(typeof o==='object'){
+      if(o.path && (o.lat_min!=null || o.lat_center!=null)) out.push(o);
+      else Object.values(o).forEach(v=>{ if(v && typeof v==='object') walk(v); });
+    }
+  })(j);
+  return out;
+}
+function rmBounds(r, tipo){
+  const n=v=>parseFloat(String(v).replace(',','.'));
+  if(r.lat_min!=null && r.lat_max!=null && r.lon_min!=null && r.lon_max!=null){
+    const a=n(r.lat_min), b=n(r.lat_max), c=n(r.lon_min), d=n(r.lon_max);
+    if([a,b,c,d].every(isFinite)) return [[Math.min(a,b),Math.min(c,d)],[Math.max(a,b),Math.max(c,d)]];
+  }
+  const la=n(r.lat_center), lo=n(r.lon_center); if(!isFinite(la)||!isFinite(lo)) return null;
+  const km=tipo==='maxcappi'?400:250, dLa=km/111.32, dLo=km/(111.32*Math.cos(la*Math.PI/180));
+  return [[la-dLa,lo-dLo],[la+dLa,lo+dLo]];
+}
+function rmLimpa(){
+  rmPara();
+  RM.ovs.forEach(o=>map.removeLayer(o)); RM.ovs=[]; RM.frames=[]; RM.fi=0;
+  el('rmSl').max=0; el('rmT').textContent='—';
+}
+function rmPara(){ if(RM.play){ clearInterval(RM.play); RM.play=null; el('rmPlay').textContent='▶'; } }
+async function rmFetchJson(u){
+  try{ const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); }
+  catch(e){
+    const pu=proxied(u); if(!pu) throw e;
+    const r=await fetch(pu,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json();
+  }
+}
+async function carregaRedemet(){
+  rmLimpa();
+  if(!el('rmOn').checked) return;
+  const key=(el('rmKey').value||'').trim();
+  if(!key){ el('rmSt').textContent='Cole a chave da API REDEMET pra ver o radar.'; return; }
+  const tipo=el('rmTipo').value, nq=Math.max(1,(+el('clRdWin').value||7)-1);
+  el('rmSt').textContent='Carregando radares REDEMET…';
+  let j;
+  const u='https://api-redemet.decea.mil.br/produtos/radar/'+tipo+'?api_key='+encodeURIComponent(key)+'&anima='+nq;
+  try{ j=await rmFetchJson(u); }
+  catch(e){
+    el('rmSt').innerHTML='Não consegui acessar a REDEMET ('+e.message+'). Confira a chave'+
+      (prefs.ciProxy?' e se o seu Worker libera o domínio api-redemet.decea.mil.br.':'. Se o navegador bloquear (CORS), configure o Worker no painel Cintilação › Avançado.');
+    return;
+  }
+  if(j && j.status===false){ el('rmSt').textContent='REDEMET recusou: '+(j.message||'chave inválida?'); return; }
+  const lista=rmLeLista(j && j.data ? j.data : j);
+  if(!lista.length){ el('rmSt').textContent='A REDEMET não devolveu nenhuma imagem de radar agora.'; return; }
+  // agrupa por horário (cada quadro = todos os radares daquele horário)
+  const porT=new Map();
+  lista.forEach(r=>{
+    const b=rmBounds(r,tipo); if(!b) return;
+    const k=String(r.data||r.hora||'?');
+    if(!porT.has(k)) porT.set(k,[]);
+    porT.get(k).push({r,b});
+  });
+  const chaves=[...porT.keys()].sort();
+  const op=+el('rmOpa').value/100;
+  RM.frames=chaves.map(k=>{
+    const itens=porT.get(k).map(({r,b})=>{
+      const ov=L.imageOverlay(r.path,b,{opacity:0,zIndex:362,interactive:false,className:'cl-rv',errorOverlayUrl:RV_VAZIO}).addTo(map);
+      RM.ovs.push(ov); return ov;
+    });
+    return {k, itens};
+  });
+  RM.fi=RM.frames.length-1;
+  el('rmSl').max=Math.max(0,RM.frames.length-1);
+  rmMostra();
+  const nr=new Set(lista.map(r=>r.nome||r.localidade)).size;
+  el('rmSt').textContent=nr+' radar(es) · '+RM.frames.length+' quadro(s) · horário da REDEMET (UTC).';
+}
+function rmMostra(){
+  const op=+el('rmOpa').value/100;
+  RM.frames.forEach((f,i)=>f.itens.forEach(o=>o.setOpacity(i===RM.fi?op:0)));
+  const f=RM.frames[RM.fi];
+  el('rmSl').value=RM.fi;
+  if(!f){ el('rmT').textContent='—'; return; }
+  const m=String(f.k).match(/(\d{4})-?(\d{2})-?(\d{2})[ T]?(\d{2}):?(\d{2})/);
+  if(m){
+    const d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
+    const min=Math.round((Date.now()-d)/60e3);
+    el('rmT').innerHTML=hhmm(d)+' <span style="color:var(--muted)">('+(min<=5?'agora':'há '+min+' min')+')</span>';
+  } else el('rmT').textContent=f.k;
+}
+el('rmSl').addEventListener('input',e=>{ rmPara(); RM.fi=+e.target.value; rmMostra(); });
+el('rmPlay').addEventListener('click',()=>{
+  if(RM.play){ rmPara(); return; }
+  if(RM.frames.length<2) return;
+  el('rmPlay').textContent='❚❚';
+  RM.play=setInterval(()=>{ RM.fi=(RM.fi+1)%RM.frames.length; rmMostra(); },700);
+});
+el('rmOpa').addEventListener('input',rmMostra);
+el('rmOn').addEventListener('change',()=>{ prefs.rmOn=el('rmOn').checked; savePrefs(); carregaRedemet(); });
+el('rmTipo').addEventListener('change',()=>{ prefs.rmTipo=el('rmTipo').value; savePrefs(); carregaRedemet(); });
+el('rmKey').addEventListener('change',()=>{ prefs.rmKey=el('rmKey').value.trim(); savePrefs(); carregaRedemet(); });
+
+/* ---------------- OpenWeatherMap (Weather Maps 1.0) ---------------- */
+const OW={lyr:{}};
+const OW_CAMADAS={
+  owWind:{nome:'wind_new', z:365, leg:['linear-gradient(90deg,rgba(255,255,255,0),#eecef9,#b364bc,#3f213b)','0','15','50','100+ km/h']},
+  owRain:{nome:'precipitation_new', z:364, leg:['linear-gradient(90deg,rgba(225,200,100,0),#c8969600,#9696aa,#7878be,#6e6ecd,#5050e1,#1414ff)','0','1','10','140 mm/h']},
+  owCloud:{nome:'clouds_new', z:363, leg:null}
+};
+function owAplica(){
+  const key=(el('owKey').value||'').trim(), op=+el('owOpa').value/100;
+  let algum=false, leg='';
+  Object.entries(OW_CAMADAS).forEach(([id,c])=>{
+    const on=el(id).checked && CL.open;
+    if(OW.lyr[id] && (!on || OW.lyr[id]._k!==key)){ map.removeLayer(OW.lyr[id]); delete OW.lyr[id]; }
+    if(on && !key) return;
+    if(on){
+      algum=true;
+      if(!OW.lyr[id]){
+        const l=L.tileLayer('https://tile.openweathermap.org/map/'+c.nome+'/{z}/{x}/{y}.png?appid='+encodeURIComponent(key),
+          {maxNativeZoom:9, maxZoom:21, opacity:op, zIndex:c.z, errorTileUrl:RV_VAZIO, attribution:'OpenWeatherMap', className:'cl-ow'});
+        l._k=key;
+        l.on('tileerror',()=>{ if(!OW.avisou){ OW.avisou=true; el('owSt').textContent='O OpenWeatherMap recusou alguns tiles — chave inválida ou ainda não ativada (pode levar até 2 h).'; } });
+        l.on('tileload',()=>{ if(OW.avisou){ OW.avisou=false; el('owSt').textContent='Camadas OpenWeatherMap carregadas.'; } });
+        l.addTo(map); OW.lyr[id]=l;
+      } else OW.lyr[id].setOpacity(op);
+      if(c.leg) leg+='<div style="margin-top:4px">'+(id==='owWind'?'Vento':'Chuva')+'</div><div class="ow-bar" style="background:'+c.leg[0]+'"></div><div class="ow-esc"><span>'+c.leg.slice(1).join('</span><span>')+'</span></div>';
+    }
+  });
+  el('owLeg').innerHTML=leg;
+  const marcou=Object.keys(OW_CAMADAS).some(id=>el(id).checked);
+  if(marcou && !key) el('owSt').textContent='Cole a chave (appid) do OpenWeatherMap pra mostrar as camadas.';
+  else if(algum && !OW.avisou) el('owSt').textContent='Camadas OpenWeatherMap ligadas (dados de modelo, atualizam ~a cada 3 h).';
+}
+['owWind','owRain','owCloud'].forEach(id=>el(id).addEventListener('change',()=>{ prefs[id]=el(id).checked; savePrefs(); owAplica(); }));
+el('owKey').addEventListener('change',()=>{ prefs.owKey=el('owKey').value.trim(); savePrefs(); OW.avisou=false; owAplica(); });
+el('owOpa').addEventListener('input',owAplica);
+function extrasRestaura(){
+  if(prefs.rmKey) el('rmKey').value=prefs.rmKey;
+  if(prefs.rmTipo) el('rmTipo').value=prefs.rmTipo;
+  el('rmOn').checked=!!prefs.rmOn;
+  if(prefs.owKey) el('owKey').value=prefs.owKey;
+  ['owWind','owRain','owCloud'].forEach(id=>el(id).checked=!!prefs[id]);
+}
 el('clRefresh').addEventListener('click',carregaTudo);
 window._cl={CL,correlaciona,calculaETA,getPt};
 })();
